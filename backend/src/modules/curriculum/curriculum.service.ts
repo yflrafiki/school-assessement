@@ -14,7 +14,7 @@ import { pageArgs, pageMeta } from '../../lib/pagination.js';
 import { syncSchoolAssignments } from '../lessons/lessons.service.js';
 import { loadTermCalendar } from '../lessons/weekKinds.js';
 import { naturalKey, rowFlags, subjectCodeFor, validateBatch } from './validation.js';
-import { extractSchemePdf } from './pdfExtract.js';
+import { TooManyPagesError, extractSchemePdf } from './pdfExtract.js';
 
 interface Actor {
   schoolId: string;
@@ -190,7 +190,14 @@ export async function createImportFromPdf(
   let extraction;
   try {
     extraction = await extractSchemePdf(input.data);
-  } catch {
+  } catch (err) {
+    if (err instanceof TooManyPagesError) {
+      throw validation({
+        file: [
+          `This PDF has ${err.pages} pages. A scheme of learning has far fewer; check that it is the right file.`,
+        ],
+      });
+    }
     throw validation({
       file: ['This PDF could not be read. Check that it is the scheme-of-learning file.'],
     });

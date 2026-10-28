@@ -38,6 +38,14 @@ export interface Extraction {
 
 const LEVEL_BY_NUMBER: Record<string, Level> = { '7': 'BASIC_7', '8': 'BASIC_8', '9': 'BASIC_9' };
 
+export const MAX_PAGES = 60;
+
+export class TooManyPagesError extends Error {
+  constructor(readonly pages: number) {
+    super(`PDF has ${pages} pages; at most ${MAX_PAGES} are accepted`);
+  }
+}
+
 /** Spaced capitals such as "E N D O F T E R M E X A M S" collapse to "ENDOFTERMEXAMS". */
 const squash = (s: string) => s.replace(/[^A-Za-z]/g, '').toUpperCase();
 
@@ -56,6 +64,12 @@ async function readGeometry(data: Uint8Array): Promise<PageGeometry[]> {
     useSystemFonts: false,
   });
   const doc = await task.promise;
+  // Parsing runs on the API's own thread, so an oversized document is refused before any page
+  // is read rather than allowed to keep the server busy. A scheme of learning is about 33 pages.
+  if (doc.numPages > MAX_PAGES) {
+    await task.destroy();
+    throw new TooManyPagesError(doc.numPages);
+  }
   const constructPath = pdfjs.OPS.constructPath;
   const pages: PageGeometry[] = [];
   for (let p = 1; p <= doc.numPages; p += 1) {

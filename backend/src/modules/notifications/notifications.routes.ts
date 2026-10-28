@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { notificationsQuery } from '@school/shared';
 import { prisma, type Prisma } from '../../lib/db.js';
 import { auth, idParam, query } from '../../lib/http.js';
-import { notFound } from '../../lib/errors.js';
+import { AppError, notFound } from '../../lib/errors.js';
 import { decodeCursor, encodeCursor } from '../../lib/pagination.js';
 import { subscribe } from '../../lib/events.js';
 
@@ -51,6 +51,8 @@ notificationsRouter.get('/notifications', async (req, res) => {
 const HEARTBEAT_MS = 25_000;
 /** Connections re-authenticate at least this often, which also enforces session expiry. */
 const STREAM_MAX_AGE_MS = 60 * 60 * 1000;
+export const MAX_STREAMS_PER_USER = 8;
+const openStreams = new Map<string, number>();
 
 /**
  * Live notifications as Server-Sent Events. The browser keeps this request open; the server
@@ -59,9 +61,16 @@ const STREAM_MAX_AGE_MS = 60 * 60 * 1000;
  */
 notificationsRouter.get('/notifications/stream', (req, res) => {
   const a = auth(req);
+  // Each open stream holds memory on the server; a handful of tabs per person is plenty.
+  const open = openStreams.get(a.userId) ?? 0;
+  if (open >= MAX_STREAMS_PER_USER) {
+    throw new AppError('RATE_LIMITED', 'Too many open tabs. Close some and try again.');
+  }
+  openStreams.set(a.userId, open + 1);
+
   res.status(200).set({
     'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
+    'Cache-Control': 'no-store, no-transform',
     Connection: 'keep-alive',
     // Stops proxies (Render's included) from buffering the stream.
     'X-Accel-Buffering': 'no',
@@ -78,6 +87,9 @@ notificationsRouter.get('/notifications/stream', (req, res) => {
     clearInterval(heartbeat);
     clearTimeout(maxAge);
     unsubscribe();
+    const remaining = (openStreams.get(a.userId) ?? 1) - 1;
+    if (remaining > 0) openStreams.set(a.userId, remaining);
+    else openStreams.delete(a.userId);
     res.end();
   };
 

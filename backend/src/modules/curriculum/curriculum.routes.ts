@@ -11,6 +11,7 @@ import {
 import { auth, body, idParam, query } from '../../lib/http.js';
 import { validation } from '../../lib/errors.js';
 import { requirePermission } from '../../middleware/requireRole.js';
+import { rateLimit } from '../../middleware/rateLimit.js';
 import * as service from './curriculum.service.js';
 
 export const curriculumRouter = Router();
@@ -64,7 +65,9 @@ curriculumRouter.post('/curriculum/imports', importer, async (req, res) => {
 curriculumRouter.post(
   '/curriculum/imports/pdf',
   importer,
-  express.raw({ type: 'application/pdf', limit: '20mb' }),
+  // Reading a PDF is heavy work: a few uploads an hour per address is plenty for a school.
+  rateLimit({ name: 'pdf-upload', windowMs: 60 * 60 * 1000, max: 10 }),
+  express.raw({ type: 'application/pdf', limit: '10mb' }),
   async (req, res) => {
     const { termId, fileName } = query(
       req,

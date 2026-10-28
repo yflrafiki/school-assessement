@@ -3,8 +3,12 @@ import { prisma } from '../lib/db.js';
 import { hashToken } from '../lib/tokens.js';
 import { AppError } from '../lib/errors.js';
 
-export const SESSION_IDLE_MS = 8 * 60 * 60 * 1000;
-export const SESSION_ABSOLUTE_MS = 7 * 24 * 60 * 60 * 1000;
+// Short lifetimes limit what a stolen token is worth. An open tab stays signed in, because it
+// keeps talking to the server (the notification check alone does that every couple of minutes);
+// a tab left closed, or a laptop asleep, is signed out after 2 hours, and everyone signs in
+// again at least once every 12 hours.
+export const SESSION_IDLE_MS = 2 * 60 * 60 * 1000;
+export const SESSION_ABSOLUTE_MS = 12 * 60 * 60 * 1000;
 const TOUCH_INTERVAL_MS = 60 * 1000;
 
 /**

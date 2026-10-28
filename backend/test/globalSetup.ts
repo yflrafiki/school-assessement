@@ -7,6 +7,8 @@ export default function setup() {
   if (!url) throw new Error('TEST_DATABASE_URL must be set (see backend/.env.example)');
   execSync('npx prisma migrate deploy', {
     stdio: 'pipe',
-    env: { ...process.env, DATABASE_URL: url },
+    // Both names point at the test database, so a MIGRATION_DATABASE_URL in .env can never
+    // send test migrations elsewhere.
+    env: { ...process.env, DATABASE_URL: url, MIGRATION_DATABASE_URL: url },
   });
 }

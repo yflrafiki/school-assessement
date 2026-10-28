@@ -36,6 +36,31 @@ const schema = z
         if (!v[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'Required for EmailJS' });
       }
     }
+    // Production refuses settings that would quietly weaken security.
+    if (v.NODE_ENV === 'production') {
+      if (!v.APP_BASE_URL.startsWith('https://')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['APP_BASE_URL'],
+          message: 'Must start with https:// in production (invitation and reset links use it)',
+        });
+      }
+      if (v.CORS_ORIGINS.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['CORS_ORIGINS'],
+          message: 'Leave empty in production: the API serves the web app from its own origin',
+        });
+      }
+      if (v.EMAIL_PROVIDER === 'console') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['EMAIL_PROVIDER'],
+          message:
+            'The console provider writes sign-in links to the logs; use emailjs in production',
+        });
+      }
+    }
   });
 
 const parsed = schema.safeParse(process.env);

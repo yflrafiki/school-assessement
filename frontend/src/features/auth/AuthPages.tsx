@@ -14,6 +14,7 @@ import { Alert, LoadingState } from '../../components/States';
 import { PublicLayout } from '../../app/AppShell';
 import { fetchMe, meKey, useMe } from './useMe';
 import { homeFor } from '../../app/guards';
+import { safeReturnTo } from '../../lib/safeRedirect';
 
 /** Tokens arrive in the URL fragment (#token=...) so they never reach server logs. */
 function useFragmentToken(): string {
@@ -43,10 +44,6 @@ function PendingNotice({ message }: { message: string }) {
       {slow ? 'Still working. The server can take a few seconds to wake up, please wait…' : message}
     </p>
   );
-}
-
-function safeReturnTo(value: string | null): string | null {
-  return value && value.startsWith('/') && !value.startsWith('//') ? value : null;
 }
 
 export function LoginPage() {

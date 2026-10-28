@@ -41,7 +41,40 @@ export function createApp() {
       },
     }),
   );
-  app.use(helmet());
+  // The session token is readable by page scripts, so the Content Security Policy is the main
+  // guard against it being stolen: only this site's own scripts, styles, fonts and connections.
+  // Inline style attributes stay allowed because React sets element styles that way.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          scriptSrcAttr: ["'none'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          fontSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+          frameAncestors: ["'none'"],
+          ...(env.NODE_ENV === 'production' ? { upgradeInsecureRequests: [] } : {}),
+        },
+      },
+      frameguard: { action: 'deny' },
+      strictTransportSecurity: { maxAge: 63072000, includeSubDomains: true },
+    }),
+  );
+  // Features the app never uses are switched off, so an injected script cannot use them either.
+  app.use((_req, res, next) => {
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+    );
+    next();
+  });
 
   // Development only: the Vite dev server runs on another port. Production serves both from one origin.
   if (env.corsOrigins.length) {
@@ -49,7 +82,6 @@ export function createApp() {
       const origin = req.get('origin');
       if (origin && env.corsOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
         res.setHeader('Vary', 'Origin');
         if (req.method === 'OPTIONS') {
           res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE');
@@ -65,6 +97,12 @@ export function createApp() {
   app.use(healthRouter);
 
   const api = Router();
+  // School computers are often shared: no browser or proxy may keep a copy of API data.
+  api.use((_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    next();
+  });
   api.use(express.json({ limit: '5mb' }));
   api.use(rateLimit({ name: 'api', windowMs: 60 * 1000, max: 600 }));
   api.use(loadSession);
