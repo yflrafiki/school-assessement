@@ -10,6 +10,7 @@ import {
 } from '@school/shared';
 import { auth, body } from '../../lib/http.js';
 import { forbidden } from '../../lib/errors.js';
+import { prisma } from '../../lib/db.js';
 import { rateLimit } from '../../middleware/rateLimit.js';
 import { requireAuth } from '../../middleware/session.js';
 import * as service from './auth.service.js';
@@ -32,6 +33,17 @@ authRouter.post('/auth/login', loginLimit, async (req, res) => {
   // A tab that signs in again replaces its own previous session rather than leaving it alive.
   if (req.auth) await service.logout(req.auth.sessionId);
   res.json({ data: { token } });
+});
+
+/**
+ * Gives a copied browser tab its own session. Browsers copy a tab's sessionStorage when it is
+ * duplicated or a link is opened in a new tab, so both tabs would otherwise share one session
+ * and signing out (or in as someone else) in one would end the other. Requires a valid session,
+ * so it grants nothing that the caller does not already have.
+ */
+authRouter.post('/auth/sessions/fork', requireAuth, async (req, res) => {
+  const { token } = await service.createSession(prisma, auth(req).userId, client(req));
+  res.status(201).json({ data: { token } });
 });
 
 authRouter.post('/auth/logout', requireAuth, async (req, res) => {

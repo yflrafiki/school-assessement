@@ -103,6 +103,42 @@ describe('login and sessions', () => {
     expect((await headTab.get('/auth/me')).status).toBe(200);
   });
 
+  it('a copied tab forks its own session, so signing out or in there leaves the original alone', async () => {
+    const { client: headTab } = await createSchoolWithHeadmaster();
+    expectOk(
+      await headTab.post('/teachers', {
+        fullName: 'Kofi Boateng',
+        email: 'kofi@test.example',
+        staffId: 'GES-1001',
+        assignments: [],
+      }),
+    );
+    await flushEmails();
+    const invite = tokenFromLink(lastLink('kofi@test.example'));
+    expectOk(
+      await new Client().agent
+        .post('/api/v1/auth/invitations/accept')
+        .send({ token: invite, staffId: 'GES-1001', password: PASSWORD }),
+    );
+
+    // The browser copied the headmaster's token into a new tab; the tab forks it.
+    const copiedTab = new Client();
+    copiedTab.token = headTab.token;
+    const fork = expectOk(await copiedTab.post('/auth/sessions/fork'));
+    copiedTab.token = fork.body.data.token;
+    expect(copiedTab.token).not.toBe(headTab.token);
+
+    // Signing out in the copy, then in as the teacher, never touches the original tab.
+    expect((await copiedTab.post('/auth/logout')).status).toBe(204);
+    expectOk(await copiedTab.login('kofi@test.example'));
+    expect((await copiedTab.get('/auth/me')).body.data.role).toBe('TEACHER');
+    expect((await headTab.get('/auth/me')).body.data.role).toBe('HEADMASTER');
+  });
+
+  it('cannot fork without a valid session', async () => {
+    expect((await new Client().post('/auth/sessions/fork')).status).toBe(401);
+  });
+
   it('a tab that signs in again replaces its own previous session', async () => {
     const { client: tab, user } = await createSchoolWithHeadmaster();
     const first = tab.token;
