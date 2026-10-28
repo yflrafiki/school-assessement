@@ -1,6 +1,7 @@
-import { Router, type Request } from 'express';
+import express, { Router, type Request } from 'express';
 import { z } from 'zod';
 import {
+  bulkReviewBody,
   createImportBody,
   curriculumQuery,
   listImportRowsQuery,
@@ -8,6 +9,7 @@ import {
   uuid,
 } from '@school/shared';
 import { auth, body, idParam, query } from '../../lib/http.js';
+import { validation } from '../../lib/errors.js';
 import { requirePermission } from '../../middleware/requireRole.js';
 import * as service from './curriculum.service.js';
 
@@ -53,6 +55,41 @@ curriculumRouter.get('/curriculum/imports', importer, async (req, res) => {
 curriculumRouter.post('/curriculum/imports', importer, async (req, res) => {
   const { batch, created } = await service.createImport(actor(req), body(req, createImportBody));
   res.status(created ? 201 : 200).json({ data: batch, meta: { created } });
+});
+
+/**
+ * Upload the scheme-of-learning PDF itself. The server rebuilds its tables and stages every
+ * row for review, exactly as if the extractor's JSON had been uploaded.
+ */
+curriculumRouter.post(
+  '/curriculum/imports/pdf',
+  importer,
+  express.raw({ type: 'application/pdf', limit: '20mb' }),
+  async (req, res) => {
+    const { termId, fileName } = query(
+      req,
+      z.object({ termId: uuid, fileName: z.string().trim().min(1).max(200).default('scheme.pdf') }),
+    );
+    const data = Buffer.isBuffer(req.body) ? new Uint8Array(req.body) : null;
+    if (
+      !data ||
+      data.length < 5 ||
+      Buffer.from(data.subarray(0, 5)).toString('latin1') !== '%PDF-'
+    ) {
+      throw validation({ file: ['Upload the scheme of learning as a PDF file'] });
+    }
+    const { batch, created } = await service.createImportFromPdf(actor(req), {
+      termId,
+      fileName,
+      data,
+    });
+    res.status(created ? 201 : 200).json({ data: batch, meta: { created } });
+  },
+);
+
+curriculumRouter.post('/curriculum/imports/:id/rows/bulk-review', importer, async (req, res) => {
+  const input = body(req, bulkReviewBody);
+  res.json({ data: await service.bulkApprove(actor(req), idParam(req), input) });
 });
 
 curriculumRouter.get('/curriculum/imports/:id', importer, async (req, res) => {

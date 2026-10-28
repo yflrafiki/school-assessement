@@ -60,9 +60,22 @@ export function toQueryString(query?: Query): string {
   return s ? `?${s}` : '';
 }
 
-async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
+/** A file sent as-is (for example a PDF), rather than as JSON. */
+interface FileBody {
+  file: Blob;
+  type: string;
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  query?: Query,
+  file?: FileBody,
+): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (file) headers['Content-Type'] = file.type;
+  else if (body !== undefined) headers['Content-Type'] = 'application/json';
   const token = getSessionToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -72,7 +85,7 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
       method,
       headers,
       credentials: 'omit',
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: file ? file.file : body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(
@@ -117,4 +130,6 @@ export const api = {
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body: unknown = {}) => request<T>('PATCH', path, body),
   delete: <T = void>(path: string) => request<T>('DELETE', path),
+  upload: <T>(path: string, file: Blob, type: string, query?: Query) =>
+    request<T>('POST', path, undefined, query, { file, type }),
 };

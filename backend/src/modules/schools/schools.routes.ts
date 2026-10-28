@@ -8,6 +8,7 @@ import {
   createTermBody,
   termWeeksBody,
   updateClassBody,
+  updateSchoolBody,
   updateSubjectBody,
   updateTermBody,
   uuid,
@@ -26,6 +27,14 @@ const actor = (req: Request) => {
 const setup = requirePermission('school.setup');
 
 // Reference data every signed-in user may read (forms and filters need it).
+schoolsRouter.get('/school', async (req, res) => {
+  res.json({ data: await service.getSchool(auth(req).schoolId) });
+});
+schoolsRouter.patch('/school', setup, async (req, res) => {
+  const { name } = body(req, updateSchoolBody);
+  res.json({ data: await service.renameSchool(actor(req), name) });
+});
+
 schoolsRouter.get('/academic-years', async (req, res) => {
   res.json({ data: await service.listAcademicYears(auth(req).schoolId) });
 });

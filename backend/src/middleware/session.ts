@@ -60,10 +60,21 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** Request bodies must be JSON; anything else is refused before it reaches a route. */
+/** Routes that receive a file instead of JSON, with the one media type each accepts. */
+const FILE_UPLOADS: Record<string, string> = {
+  '/curriculum/imports/pdf': 'application/pdf',
+};
+
+/** Request bodies must be JSON (or the declared file type); anything else is refused before routing. */
 export const requireJson: RequestHandler = (req, _res, next) => {
   if (SAFE_METHODS.has(req.method)) return next();
   const hasBody = req.headers['content-length'] && req.headers['content-length'] !== '0';
+  const fileType = FILE_UPLOADS[req.path];
+  if (hasBody && fileType) {
+    return req.is(fileType)
+      ? next()
+      : next(new AppError('VALIDATION_ERROR', 'Upload the file as a PDF'));
+  }
   if (hasBody && !req.is('application/json')) {
     return next(new AppError('VALIDATION_ERROR', 'Requests must be sent as JSON'));
   }

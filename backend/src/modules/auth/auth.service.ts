@@ -126,6 +126,30 @@ export async function logout(sessionId: string) {
   if (session) publishToUser(session.userId, { type: 'session-ended', sessionId });
 }
 
+export async function updateOwnName(
+  userId: string,
+  schoolId: string,
+  fullName: string,
+  requestId: string,
+) {
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { fullName: true },
+    });
+    await tx.user.update({ where: { id: userId }, data: { fullName } });
+    await audit(tx, {
+      schoolId,
+      actorId: userId,
+      action: 'user.name_changed',
+      entityType: 'User',
+      entityId: userId,
+      metadata: { from: before.fullName, to: fullName },
+      requestId,
+    });
+  });
+}
+
 export async function getMe(userId: string): Promise<Me> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },

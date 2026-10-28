@@ -1,17 +1,17 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { PASSWORD_MIN_LENGTH, newPassword } from '@school/shared';
-import { api } from '../../lib/api';
-import { applyServerErrors } from '../../lib/forms';
+import { PASSWORD_MIN_LENGTH, newPassword, type Me } from '@school/shared';
+import { api, type One } from '../../lib/api';
+import { applyServerErrors, fullErrorMessage } from '../../lib/forms';
 import { PageHeader, Section } from '../../components/PageHeader';
 import { FormField } from '../../components/FormField';
 import { SubmitButton } from '../../components/SubmitButton';
 import { PasswordInput } from '../../components/PasswordInput';
 import { Alert } from '../../components/States';
-import { useCurrentUser } from './useMe';
+import { meKey, useCurrentUser } from './useMe';
 
 const schema = z
   .object({
@@ -52,7 +52,7 @@ export function ProfilePage() {
           <dl className="space-y-3 px-4 py-4 text-sm">
             <div>
               <dt className="text-muted">Name</dt>
-              <dd>{me.fullName}</dd>
+              <dd>{me.role === 'TEACHER' ? me.fullName : <EditOwnName current={me.fullName} />}</dd>
             </div>
             <div>
               <dt className="text-muted">Email</dt>
@@ -74,7 +74,9 @@ export function ProfilePage() {
             </div>
           </dl>
           <p className="border-t border-line px-4 py-3 text-xs text-muted">
-            To change your name or email, ask your headmaster.
+            {me.role === 'TEACHER'
+              ? 'To change your name or email, ask your headmaster.'
+              : 'Your email is your sign-in, so it can only be changed by the system operator. The school name is changed under Settings.'}
           </p>
         </Section>
         <Section title="Change password">
@@ -120,5 +122,75 @@ export function ProfilePage() {
         </Section>
       </div>
     </>
+  );
+}
+
+/** Inline name editor for headmasters and school admins. */
+function EditOwnName({ current }: { current: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(current);
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: (fullName: string) => api.patch<One<Me>>('/auth/me', { fullName }),
+    onSuccess: (res) => {
+      qc.setQueryData(meKey, res.data);
+      setEditing(false);
+    },
+    onError: (err) => setError(fullErrorMessage(err)),
+  });
+
+  if (!editing) {
+    return (
+      <span className="flex items-center gap-2">
+        {current}
+        <button
+          type="button"
+          className="btn-ghost h-7 px-2 text-xs"
+          onClick={() => {
+            setName(current);
+            setError(null);
+            setEditing(true);
+          }}
+        >
+          Edit
+        </button>
+      </span>
+    );
+  }
+  return (
+    <form
+      className="mt-1 space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError(null);
+        save.mutate(name);
+      }}
+    >
+      <label className="sr-only" htmlFor="own-name">
+        Full name
+      </label>
+      <input
+        id="own-name"
+        className="input"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        autoComplete="name"
+      />
+      {error && <Alert>{error}</Alert>}
+      <span className="flex gap-2">
+        <SubmitButton pending={save.isPending} pendingLabel="Saving…" className="btn-primary h-8">
+          Save
+        </SubmitButton>
+        <button
+          type="button"
+          className="btn-secondary h-8"
+          onClick={() => setEditing(false)}
+          disabled={save.isPending}
+        >
+          Cancel
+        </button>
+      </span>
+    </form>
   );
 }

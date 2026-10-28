@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { createImportBody } from '@school/shared';
 import type {
   CreateImportBody,
   Level,
@@ -13,6 +14,7 @@ import { pageArgs, pageMeta } from '../../lib/pagination.js';
 import { syncSchoolAssignments } from '../lessons/lessons.service.js';
 import { loadTermCalendar } from '../lessons/weekKinds.js';
 import { naturalKey, rowFlags, subjectCodeFor, validateBatch } from './validation.js';
+import { extractSchemePdf } from './pdfExtract.js';
 
 interface Actor {
   schoolId: string;
@@ -126,6 +128,10 @@ export async function getImport(schoolId: string, batchId: string) {
   const flaggedPending = await prisma.importRow.count({
     where: { batchId, decision: 'PENDING', NOT: { flags: { isEmpty: true } } },
   });
+  // Rows whose only problem is text cut off in the source can be approved together.
+  const truncatedOnlyPending = await prisma.importRow.count({
+    where: { batchId, decision: 'PENDING', flags: { equals: ['TRUNCATED'] } },
+  });
   return {
     id: b.id,
     fileName: b.fileName,
@@ -141,6 +147,7 @@ export async function getImport(schoolId: string, batchId: string) {
       total,
       flagged,
       flaggedPending,
+      truncatedOnlyPending,
       decisions: Object.fromEntries(byDecision.map((d) => [d.decision, d._count._all])),
     },
   };
@@ -173,6 +180,70 @@ export async function listImportRows(
     prisma.importRow.count({ where }),
   ]);
   return { data: rows, meta: pageMeta(q.page, q.pageSize, total) };
+}
+
+/** Reads the PDF, then stages it through the same pipeline as an uploaded extraction. */
+export async function createImportFromPdf(
+  actor: Actor,
+  input: { termId: string; fileName: string; data: Uint8Array },
+) {
+  let extraction;
+  try {
+    extraction = await extractSchemePdf(input.data);
+  } catch {
+    throw validation({
+      file: ['This PDF could not be read. Check that it is the scheme-of-learning file.'],
+    });
+  }
+  if (!extraction.rows.length) {
+    throw validation({
+      file: [
+        'No scheme-of-learning tables were found in this PDF. Check that it is the right file.',
+      ],
+    });
+  }
+  const body = createImportBody.parse({
+    termId: input.termId,
+    fileName: input.fileName,
+    checksum: extraction.checksum,
+    notes: extraction.notes,
+    weeks: extraction.weeks,
+    rows: extraction.rows,
+  });
+  return createImport(actor, body);
+}
+
+export async function bulkApprove(
+  actor: Actor,
+  batchId: string,
+  input: { flag: 'TRUNCATED'; note: string },
+) {
+  return prisma.$transaction(async (tx) => {
+    const batch = await tx.importBatch.findFirst({
+      where: { id: batchId, schoolId: actor.schoolId },
+    });
+    if (!batch) throw notFound('Import');
+    if (batch.status !== 'STAGED') throw conflict('This import has already been processed');
+    const { count } = await tx.importRow.updateMany({
+      where: { batchId, decision: 'PENDING', flags: { equals: [input.flag] } },
+      data: {
+        decision: 'APPROVED',
+        reviewNote: input.note,
+        reviewedById: actor.userId,
+        reviewedAt: new Date(),
+      },
+    });
+    await audit(tx, {
+      schoolId: actor.schoolId,
+      actorId: actor.userId,
+      action: 'curriculum.rows_bulk_approved',
+      entityType: 'ImportBatch',
+      entityId: batchId,
+      metadata: { flag: input.flag, approved: count, note: input.note },
+      requestId: actor.requestId,
+    });
+    return { approved: count };
+  });
 }
 
 export async function reviewRow(

@@ -253,6 +253,28 @@ export async function setTermWeeks(
   );
 }
 
+// ---------- School ----------
+
+export async function getSchool(schoolId: string) {
+  const s = await prisma.school.findUniqueOrThrow({ where: { id: schoolId } });
+  return { id: s.id, name: s.name, timezone: s.timezone };
+}
+
+export async function renameSchool(actor: Actor, name: string) {
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.school.findUniqueOrThrow({ where: { id: actor.schoolId } });
+    await tx.school.update({ where: { id: actor.schoolId }, data: { name } });
+    await audit(tx, {
+      ...auditFor(actor),
+      action: 'school.renamed',
+      entityType: 'School',
+      entityId: actor.schoolId,
+      metadata: { from: before.name, to: name },
+    });
+  });
+  return getSchool(actor.schoolId);
+}
+
 // ---------- Classes ----------
 
 export async function listClasses(schoolId: string) {

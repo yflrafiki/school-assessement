@@ -50,6 +50,8 @@ export function rowFlags(row: ExtractedRow): ImportFlag[] {
   for (const m of text.matchAll(CODE)) {
     if (m[1] !== LEVEL_NUMBER[row.level]) flags.add('CODE_LEVEL_MISMATCH');
   }
+  // A two-digit level part ("B71.1.1.1") is a printing error in the code itself.
+  if (/\bB\s?\d\d/.test(text)) flags.add('CODE_LEVEL_MISMATCH');
   if (NOISE.test(text)) flags.add('OCR_OR_SPACING_NOISE');
   return [...flags];
 }

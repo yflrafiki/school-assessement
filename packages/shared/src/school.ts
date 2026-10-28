@@ -87,6 +87,10 @@ export const weekPolicyBody = z
   });
 export type WeekPolicyBody = z.infer<typeof weekPolicyBody>;
 
+export const updateSchoolBody = z.object({
+  name: trimmed(2, 160),
+});
+
 export const createSchoolBody = z.object({
   name: trimmed(2, 160),
   timezone: z.string().default('Africa/Accra'),

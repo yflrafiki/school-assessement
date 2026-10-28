@@ -6,8 +6,10 @@ import {
   invitationValidateBody,
   loginBody,
   resetPasswordBody,
+  updateMeBody,
 } from '@school/shared';
 import { auth, body } from '../../lib/http.js';
+import { forbidden } from '../../lib/errors.js';
 import { rateLimit } from '../../middleware/rateLimit.js';
 import { requireAuth } from '../../middleware/session.js';
 import * as service from './auth.service.js';
@@ -39,6 +41,14 @@ authRouter.post('/auth/logout', requireAuth, async (req, res) => {
 
 authRouter.get('/auth/me', requireAuth, async (req, res) => {
   res.json({ data: await service.getMe(auth(req).userId) });
+});
+
+authRouter.patch('/auth/me', requireAuth, async (req, res) => {
+  const a = auth(req);
+  if (a.role === 'TEACHER') throw forbidden();
+  const { fullName } = body(req, updateMeBody);
+  await service.updateOwnName(a.userId, a.schoolId, fullName, req.requestId);
+  res.json({ data: await service.getMe(a.userId) });
 });
 
 authRouter.post('/auth/invitations/validate', tokenLimit, async (req, res) => {

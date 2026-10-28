@@ -240,6 +240,7 @@ export interface ImportBatch {
     total: number;
     flagged: number;
     flaggedPending: number;
+    truncatedOnlyPending: number;
     decisions: Record<string, number>;
   };
 }

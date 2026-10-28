@@ -53,13 +53,18 @@ export function CurriculumPage() {
 
   const upload = useMutation({
     mutationFn: async (file: File) => {
+      // The scheme-of-learning PDF is read on the server. A JSON extraction is still accepted.
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        return api.upload<One<ImportBatch>>('/curriculum/imports/pdf', file, 'application/pdf', {
+          termId: effectiveTerm,
+          fileName: file.name,
+        });
+      }
       let parsed: unknown;
       try {
         parsed = JSON.parse(await file.text());
       } catch {
-        throw new Error(
-          'This file is not valid JSON. Upload the output of the curriculum extractor.',
-        );
+        throw new Error('Upload the scheme of learning as a PDF file.');
       }
       const body = createImportBody.safeParse({ ...(parsed as object), termId: effectiveTerm });
       if (!body.success)
@@ -101,7 +106,7 @@ export function CurriculumPage() {
             <input
               ref={fileRef}
               type="file"
-              accept="application/json,.json"
+              accept="application/pdf,.pdf,application/json,.json"
               className="sr-only"
               id="import-file"
               onChange={(e) => {
@@ -117,7 +122,8 @@ export function CurriculumPage() {
               disabled={!effectiveTerm || upload.isPending}
               onClick={() => fileRef.current?.click()}
             >
-              <FiUpload aria-hidden /> {upload.isPending ? 'Uploading…' : 'Upload extraction'}
+              <FiUpload aria-hidden />{' '}
+              {upload.isPending ? 'Reading the PDF…' : 'Upload scheme of learning (PDF)'}
             </button>
           </div>
         }
@@ -209,7 +215,7 @@ export function CurriculumPage() {
               ) : (
                 <EmptyState
                   title="No imports yet"
-                  description="Run the extractor on the scheme-of-learning PDF (see docs/curriculum-import.md) and upload its JSON output."
+                  description="Choose the term, then upload the scheme-of-learning PDF. Every row is read from its tables and shown for review before anything reaches teachers."
                 />
               )
             }

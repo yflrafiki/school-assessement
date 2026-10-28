@@ -47,6 +47,15 @@ export const reviewImportRowBody = z.object({
     .optional(),
 });
 
+/**
+ * Approve, as printed, every pending row whose only flag is the given one. Rows that carry any
+ * other flag still need their own decision. Truncated text is never completed by guesswork.
+ */
+export const bulkReviewBody = z.object({
+  flag: z.literal('TRUNCATED'),
+  note: z.string().trim().max(1000).default('Approved as printed: the source text is cut off.'),
+});
+
 export const listImportRowsQuery = paginationQuery.extend({
   flagged: z.enum(['true', 'false']).optional(),
   decision: z.enum(['PENDING', 'APPROVED', 'CORRECTED', 'REJECTED']).optional(),

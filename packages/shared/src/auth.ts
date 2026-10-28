@@ -44,6 +44,11 @@ export const changePasswordBody = z.object({
   newPassword,
 });
 
+/** Headmasters and school admins may correct their own name; teachers ask their headmaster. */
+export const updateMeBody = z.object({
+  fullName: z.string().trim().min(2, 'Enter your full name').max(120),
+});
+
 export const PERMISSIONS = [
   'records.own',
   'lessons.own',

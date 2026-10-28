@@ -11,8 +11,10 @@ import { Alert, EmptyState, QueryView } from '../../components/States';
 import { StatusBadge } from '../../components/StatusBadge';
 import { DataTable } from '../../components/DataTable';
 import { refKeys, useAcademicYears, useClasses, useSubjects, useTerms } from '../reference';
+import { meKey } from '../auth/useMe';
 
 const TABS = [
+  { id: 'school', label: 'School' },
   { id: 'terms', label: 'Years and terms' },
   { id: 'weeks', label: 'Term weeks' },
   { id: 'classes', label: 'Classes' },
@@ -24,7 +26,7 @@ const TABS = [
 
 export function SettingsPage() {
   const { values, set } = useUrlState(['tab'] as const);
-  const tab = values.tab || 'terms';
+  const tab = values.tab || 'school';
   return (
     <>
       <PageHeader
@@ -46,6 +48,7 @@ export function SettingsPage() {
         ))}
       </div>
       <div role="tabpanel">
+        {tab === 'school' && <SchoolTab />}
         {tab === 'terms' && <TermsTab />}
         {tab === 'weeks' && <WeeksTab />}
         {tab === 'classes' && <ClassesTab />}
@@ -69,6 +72,53 @@ function useAction<T>(fn: (input: T) => Promise<unknown>, keys: readonly (readon
     onError: (e) => setError(fullErrorMessage(e)),
   });
   return { ...m, error };
+}
+
+function SchoolTab() {
+  const school = useQuery({
+    queryKey: ['school'],
+    queryFn: () =>
+      api.get<One<{ id: string; name: string; timezone: string }>>('/school').then((r) => r.data),
+  });
+  const [name, setName] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const rename = useAction((n: string) => api.patch('/school', { name: n }), [['school'], meKey]);
+  return (
+    <Section title="School">
+      <QueryView query={school}>
+        {(s) => (
+          <form
+            className="max-w-lg space-y-4 px-4 py-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSaved(false);
+              rename.mutate((name ?? s.name).trim(), { onSuccess: () => setSaved(true) });
+            }}
+          >
+            <label className="block text-sm">
+              <span className="label">School name</span>
+              <input
+                className="input"
+                required
+                minLength={2}
+                value={name ?? s.name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-muted">
+                Shown on every page and in invitation and password emails.
+              </span>
+            </label>
+            <p className="text-sm text-muted">Time zone: {s.timezone}</p>
+            {rename.error && <Alert>{rename.error}</Alert>}
+            {saved && <Alert tone="ok">School name saved.</Alert>}
+            <button type="submit" className="btn-primary" disabled={rename.isPending}>
+              Save
+            </button>
+          </form>
+        )}
+      </QueryView>
+    </Section>
+  );
 }
 
 function TermsTab() {

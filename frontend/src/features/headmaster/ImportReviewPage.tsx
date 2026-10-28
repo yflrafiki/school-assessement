@@ -28,6 +28,7 @@ export function ImportReviewPage() {
   const { values, set, page } = useUrlState(['flagged', 'decision', 'level', 'subject'] as const);
   const [reviewing, setReviewing] = useState<ImportRow | null>(null);
   const [approving, setApproving] = useState(false);
+  const [bulk, setBulk] = useState(false);
   const flagged = values.flagged || 'true';
 
   const batch = useQuery({
@@ -61,15 +62,22 @@ export function ImportReviewPage() {
             }
             actions={
               b.status === 'STAGED' ? (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={b.counts.flaggedPending > 0}
-                  onClick={() => setApproving(true)}
-                  title={b.counts.flaggedPending ? 'Review every flagged row first' : undefined}
-                >
-                  Approve and import
-                </button>
+                <>
+                  {b.counts.truncatedOnlyPending > 0 && (
+                    <button type="button" className="btn-secondary" onClick={() => setBulk(true)}>
+                      Approve {b.counts.truncatedOnlyPending} cut-off rows as printed
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={b.counts.flaggedPending > 0}
+                    onClick={() => setApproving(true)}
+                    title={b.counts.flaggedPending ? 'Review every flagged row first' : undefined}
+                  >
+                    Approve and import
+                  </button>
+                </>
               ) : b.scheme ? (
                 <Link to="/h/curriculum" className="btn-secondary">
                   Go to scheme v{b.scheme.version}
@@ -222,6 +230,17 @@ export function ImportReviewPage() {
             </QueryView>
           </Section>
           <ReviewDrawer batchId={id} row={reviewing} onClose={() => setReviewing(null)} />
+          <ConfirmDialog
+            open={bulk}
+            title="Approve cut-off rows as printed?"
+            body={`${b.counts.truncatedOnlyPending} rows are flagged only because the source PDF cuts their text off with "......". They will be approved exactly as printed; the missing words are not guessed. Rows with any other flag still need your own review. This is recorded in the audit log.`}
+            confirmLabel="Approve as printed"
+            onClose={() => setBulk(false)}
+            onConfirm={async () => {
+              await api.post(`/curriculum/imports/${id}/rows/bulk-review`, { flag: 'TRUNCATED' });
+              void qc.invalidateQueries({ queryKey: ['curriculum', 'import', id] });
+            }}
+          />
           <ConfirmDialog
             open={approving}
             title="Approve and import?"

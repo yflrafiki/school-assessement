@@ -1,11 +1,18 @@
-# Curriculum extractor (not built yet)
+# Curriculum extractor
 
-This tool turns the CEPME first-term scheme-of-learning PDF into the JSON described in
-[docs/curriculum-import.md](../../docs/curriculum-import.md).
+The extractor now lives in the API, so headmasters upload the scheme-of-learning PDF directly
+(Curriculum → Upload scheme of learning). It is
+[backend/src/modules/curriculum/pdfExtract.ts](../../backend/src/modules/curriculum/pdfExtract.ts),
+written in Node with pdfjs-dist, so it needs no Python.
 
-It has not been written yet because the PDF has not been supplied to this workspace, and the
-extraction has to be built and checked against the real file. The table rows must be rebuilt
-from cell geometry, because strand and standard cells are merged across weeks.
+To inspect what it reads from a file without importing anything:
 
-Note: Python is not installed on the development machine. The plan's pdfplumber approach would
-need Python 3.11+, or the tool can be written in Node with pdfjs-dist instead.
+```
+pnpm --filter @school/api extract-scheme -- path/to/scheme.pdf --json out.json
+```
+
+The CEPME PDF is not committed to the repository. Tests that use it run only when it is supplied:
+
+```
+SCHEME_PDF=path/to/scheme.pdf pnpm --filter @school/api test
+```
