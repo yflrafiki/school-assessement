@@ -10,6 +10,7 @@ import type {
 import { prisma, type Prisma } from '../../lib/db.js';
 import { AppError, conflict, notFound, validation } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
+import { logger } from '../../config/logger.js';
 import { pageArgs, pageMeta } from '../../lib/pagination.js';
 import { syncSchoolAssignments } from '../lessons/lessons.service.js';
 import { loadTermCalendar } from '../lessons/weekKinds.js';
@@ -191,6 +192,11 @@ export async function createImportFromPdf(
   try {
     extraction = await extractSchemePdf(input.data);
   } catch (err) {
+    // Keep the real reason in the logs; the headmaster gets a plain message.
+    logger.warn(
+      { err, requestId: actor.requestId, fileName: input.fileName },
+      'PDF extraction failed',
+    );
     if (err instanceof TooManyPagesError) {
       throw validation({
         file: [

@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
+import { ZodError } from 'zod';
 import type { ApiErrorBody } from '@school/shared';
 import { logger } from '../config/logger.js';
 import { AppError, isUniqueViolation } from '../lib/errors.js';
@@ -20,12 +21,20 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     appError = new AppError('VALIDATION_ERROR', 'The request body is too large');
   } else if (isUniqueViolation(err)) {
     appError = new AppError('CONFLICT', 'This conflicts with an existing record');
+  } else if (err instanceof ZodError) {
+    // Data that failed validation deeper in a service is still the caller's input, not a crash.
+    const fields: Record<string, string[]> = {};
+    for (const issue of err.issues)
+      (fields[issue.path.join('.') || '_'] ??= []).push(issue.message);
+    appError = new AppError('VALIDATION_ERROR', 'Some of the data is not valid', { fields });
   } else {
-    logger.error({ err, requestId: req.requestId }, 'Unhandled error');
     appError = new AppError('INTERNAL_ERROR', 'Something went wrong. Please try again.');
   }
 
-  if (appError.status >= 500) logger.error({ err, requestId: req.requestId }, appError.message);
+  // The full error (with stack) goes to the logs; the response never contains internals.
+  if (appError.status >= 500) {
+    logger.error({ err, requestId: req.requestId, path: req.path }, 'Unhandled error');
+  }
 
   const body: ApiErrorBody = {
     error: {

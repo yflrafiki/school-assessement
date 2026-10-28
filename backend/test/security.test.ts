@@ -80,6 +80,22 @@ describe('live notification connections', () => {
   });
 });
 
+describe('slow database', () => {
+  // Prisma's default 5-second transaction limit failed curriculum imports on a remote,
+  // waking-up database with a 500. Transactions now have a minute.
+  it(
+    'lets a transaction run longer than Prisma’s 5-second default',
+    { timeout: 20_000 },
+    async () => {
+      const result = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_sleep(6)::text AS slept`;
+        return 'committed';
+      });
+      expect(result).toBe('committed');
+    },
+  );
+});
+
 describe('production configuration', () => {
   const start = (env: Record<string, string>) =>
     spawnSync(
