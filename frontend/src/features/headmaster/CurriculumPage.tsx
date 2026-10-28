@@ -85,49 +85,105 @@ export function CurriculumPage() {
     <>
       <PageHeader
         title="Curriculum"
-        description="Import the scheme of learning, review every flagged row, then publish it for the term."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="sr-only" htmlFor="import-term">
-              Term
-            </label>
-            <select
-              id="import-term"
-              className="input w-auto"
-              value={effectiveTerm}
-              onChange={(e) => setTermId(e.target.value)}
-            >
-              {(terms.data ?? []).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} {t.academicYearName}
-                </option>
-              ))}
-            </select>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/pdf,.pdf,application/json,.json"
-              className="sr-only"
-              id="import-file"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                setError(null);
-                if (f) upload.mutate(f);
-                e.target.value = '';
-              }}
-            />
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={!effectiveTerm || upload.isPending}
-              onClick={() => fileRef.current?.click()}
-            >
-              <FiUpload aria-hidden />{' '}
-              {upload.isPending ? 'Reading the PDF…' : 'Upload scheme of learning (PDF)'}
-            </button>
-          </div>
-        }
+        description="Upload the term's scheme of learning, review the flagged rows, then publish it so teachers can record lessons."
       />
+
+      <Section title="Upload the term's scheme of learning" className="mb-5">
+        <div className="space-y-4 px-4 py-4">
+          {terms.isPending ? (
+            <p className="text-sm text-muted">Loading terms…</p>
+          ) : !terms.data?.length ? (
+            <Alert tone="warn">
+              No term has been set up yet. The scheme of learning belongs to a term, so create the
+              academic year and the term first
+              {canPublish ? (
+                <>
+                  {' '}
+                  in{' '}
+                  <Link to="/h/settings?tab=terms" className="font-medium underline">
+                    Settings → Years and terms
+                  </Link>
+                  , then come back here.
+                </>
+              ) : (
+                '. Ask the headmaster to do this, then come back here.'
+              )}
+            </Alert>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm">
+                  <span className="label">Term</span>
+                  <select
+                    className="input w-auto"
+                    value={effectiveTerm}
+                    onChange={(e) => setTermId(e.target.value)}
+                    disabled={upload.isPending}
+                  >
+                    {terms.data.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} {t.academicYearName}
+                        {t.isCurrent ? ' (current)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="sr-only"
+                  id="import-file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    setError(null);
+                    if (f) upload.mutate(f);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!effectiveTerm || upload.isPending}
+                  aria-busy={upload.isPending}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {upload.isPending ? (
+                    <span
+                      aria-hidden
+                      className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white motion-safe:animate-spin"
+                    />
+                  ) : (
+                    <FiUpload aria-hidden />
+                  )}
+                  {upload.isPending ? 'Reading the PDF…' : 'Choose the PDF and upload'}
+                </button>
+              </div>
+              {upload.isPending ? (
+                <p role="status" className="text-sm text-muted">
+                  Reading every table in the PDF. This takes a few seconds; please keep this page
+                  open.
+                </p>
+              ) : (
+                <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+                  <li>
+                    Upload the scheme-of-learning PDF for the term (for example the CEPME file).
+                  </li>
+                  <li>
+                    Review the flagged rows: approve the cut-off rows in one step, then check the
+                    few others one by one.
+                  </li>
+                  <li>
+                    Approve the import, then publish the scheme below. Teachers can then record
+                    lessons.
+                  </li>
+                </ol>
+              )}
+            </>
+          )}
+        </div>
+      </Section>
+
       {error && (
         <div className="mb-4">
           <Alert>{error}</Alert>
