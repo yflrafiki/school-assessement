@@ -81,7 +81,7 @@ API integration tests run against `TEST_DATABASE_URL`. They apply migrations onc
 
 - Build with `pnpm build`, set `WEB_DIST_DIR` to the absolute path of `frontend/dist`, and run `node backend/dist/server.js`. The API then serves the web app from the same origin, under its Content Security Policy.
 - Set `NODE_ENV=production`, `APP_BASE_URL` to the public URL, and leave `CORS_ORIGINS` empty. Serve over HTTPS only.
-- Email: set `EMAIL_PROVIDER=emailjs` and the `EMAILJS_*` variables. The two templates (invitation, password reset) receive `to_name`, `to_email`, `school_name`, `link`, `expires_in`, `from_name` and `reply_to`. Turn off email history on both templates in EmailJS, because the link carries a token. Whether EmailJS accepts server-side calls on your plan is not yet confirmed: send one test invitation first (see docs/security.md).
+- Email: set `EMAIL_PROVIDER=emailjs` and the `EMAILJS_*` variables. One EmailJS template (`EMAILJS_TEMPLATE_INVITATION`) serves both invitations and password resets, because the app sends the wording with each email: `subject`, `heading`, `intro`, `action_label`, `closing_note`, `link`, plus `to_name`, `to_email`, `school_name`, `from_name` and `reply_to`. Setting `EMAILJS_TEMPLATE_RESET` as well gives resets their own template. Turn off email history in EmailJS, because the link carries a token. In EmailJS, enable "Allow EmailJS API for non-browser applications" (Account → Security). Whether EmailJS accepts server-side calls on your plan is not yet confirmed: send one test invitation first (see docs/security.md).
 - Run `pnpm db:deploy` on each release. Back up the database daily with point-in-time recovery.
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit together.

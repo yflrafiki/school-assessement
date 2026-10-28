@@ -30,8 +30,8 @@ const schema = z
         'EMAILJS_SERVICE_ID',
         'EMAILJS_PUBLIC_KEY',
         'EMAILJS_PRIVATE_KEY',
+        // Used for both emails unless EMAILJS_TEMPLATE_RESET is also set.
         'EMAILJS_TEMPLATE_INVITATION',
-        'EMAILJS_TEMPLATE_RESET',
       ] as const) {
         if (!v[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'Required for EmailJS' });
       }
