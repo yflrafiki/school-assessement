@@ -4,6 +4,7 @@ import { prisma, type Prisma } from '../../lib/db.js';
 import { auth, idParam, query } from '../../lib/http.js';
 import { notFound } from '../../lib/errors.js';
 import { decodeCursor, encodeCursor } from '../../lib/pagination.js';
+import { subscribe } from '../../lib/events.js';
 
 export const notificationsRouter = Router();
 
@@ -45,6 +46,57 @@ notificationsRouter.get('/notifications', async (req, res) => {
       nextCursor: rows.length > q.limit && last ? encodeCursor(last.createdAt, last.id) : null,
     },
   });
+});
+
+const HEARTBEAT_MS = 25_000;
+/** Connections re-authenticate at least this often, which also enforces session expiry. */
+const STREAM_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Live notifications as Server-Sent Events. The browser keeps this request open; the server
+ * writes an event the moment a notification is committed. Authenticated like every other
+ * request (Bearer header), so it closes as soon as its session ends.
+ */
+notificationsRouter.get('/notifications/stream', (req, res) => {
+  const a = auth(req);
+  res.status(200).set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    // Stops proxies (Render's included) from buffering the stream.
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders();
+
+  const send = (event: string, data: unknown) =>
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(heartbeat);
+    clearTimeout(maxAge);
+    unsubscribe();
+    res.end();
+  };
+
+  const unsubscribe = subscribe(a.userId, (event) => {
+    if (event.type === 'notification') send('notification', event.notification);
+    else if (
+      event.type === 'session-ended' &&
+      (!event.sessionId || event.sessionId === a.sessionId)
+    ) {
+      send('session-ended', {});
+      close();
+    }
+  });
+  // Comments keep idle connections from being dropped by proxies along the way.
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
+  const maxAge = setTimeout(close, STREAM_MAX_AGE_MS);
+  req.on('close', close);
+
+  send('ready', {});
 });
 
 notificationsRouter.get('/notifications/unread-count', async (req, res) => {

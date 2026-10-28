@@ -9,6 +9,7 @@ import {
 import { prisma, type Prisma } from '../../lib/db.js';
 import { AppError, isUniqueViolation, notFound, validation } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
+import { publishToUser } from '../../lib/events.js';
 import { fromDbDate, localNow, toDbDate } from '../../lib/dates.js';
 import { pageArgs, pageMeta } from '../../lib/pagination.js';
 import { lockAssignment, syncAssignment } from '../lessons/lessons.service.js';
@@ -201,12 +202,15 @@ export async function submitRecord(actor: TeacherActor, input: SubmitRecordBody)
       }
 
       // 10. Submission side effects in the same transaction.
+      let notify: { recipientIds: string[]; title: string; body: string } | null = null;
       if (input.status === 'SUBMITTED') {
         await syncAssignment(tx, assignment.id, { generate: false });
         const headmasters = await tx.user.findMany({
           where: { schoolId: actor.schoolId, role: 'HEADMASTER', status: 'ACTIVE' },
           select: { id: true },
         });
+        const title = `${actor.fullName} recorded ${assignment.subject.name}, ${assignment.schoolClass.name}`;
+        const body = `Week ${lesson.weekNumber}, lesson of ${date} at ${minutesToTime(lesson.startMinute)}${data.isLate ? ' (submitted late)' : ''}.`;
         if (headmasters.length) {
           await tx.notification.createMany({
             data: headmasters.map((h) => ({
@@ -214,11 +218,12 @@ export async function submitRecord(actor: TeacherActor, input: SubmitRecordBody)
               recipientId: h.id,
               type: 'RECORD_SUBMITTED' as const,
               recordId: record.id,
-              title: `${actor.fullName} recorded ${assignment.subject.name}, ${assignment.schoolClass.name}`,
-              body: `Week ${lesson.weekNumber}, lesson of ${date} at ${minutesToTime(lesson.startMinute)}${data.isLate ? ' (submitted late)' : ''}.`,
+              title,
+              body,
             })),
             skipDuplicates: true,
           });
+          notify = { recipientIds: headmasters.map((h) => h.id), title, body };
         }
         await audit(tx, {
           schoolId: actor.schoolId,
@@ -245,8 +250,24 @@ export async function submitRecord(actor: TeacherActor, input: SubmitRecordBody)
           requestId: actor.requestId,
         });
       }
-      return { recordId: record.id, assignmentId: assignment.id, weekNumber: lesson.weekNumber };
+      return {
+        recordId: record.id,
+        assignmentId: assignment.id,
+        weekNumber: lesson.weekNumber,
+        notify,
+      };
     });
+
+    // Push to open headmaster tabs only now that the record is committed.
+    if (result.notify) {
+      const { recipientIds, title, body } = result.notify;
+      for (const id of recipientIds) {
+        publishToUser(id, {
+          type: 'notification',
+          notification: { title, body, recordId: result.recordId },
+        });
+      }
+    }
 
     // 11. Lesson state and the week's status after commit.
     const [record, week] = await Promise.all([

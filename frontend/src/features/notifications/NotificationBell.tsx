@@ -5,17 +5,21 @@ import { api, type One } from '../../lib/api';
 
 export const unreadKey = ['notifications', 'unread-count'] as const;
 
-export function useUnreadCount() {
+/**
+ * Unread count. Live updates normally refresh it the instant something arrives; the timer is
+ * only a safety net, checked rarely while the live connection is up and every 30 s if it is not.
+ */
+export function useUnreadCount(live = false) {
   return useQuery({
     queryKey: unreadKey,
     queryFn: () =>
       api.get<One<{ count: number }>>('/notifications/unread-count').then((r) => r.data.count),
-    refetchInterval: 30_000,
+    refetchInterval: live ? 120_000 : 30_000,
   });
 }
 
-export function NotificationBell({ to }: { to: string }) {
-  const { data: count = 0 } = useUnreadCount();
+export function NotificationBell({ to, live = false }: { to: string; live?: boolean }) {
+  const { data: count = 0 } = useUnreadCount(live);
   const label = count ? `Notifications, ${count} unread` : 'Notifications';
   return (
     <Link

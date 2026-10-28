@@ -3,6 +3,7 @@ import { env } from '../../config/env.js';
 import { prisma, type Db } from '../../lib/db.js';
 import { AppError, validation } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
+import { publishToUser } from '../../lib/events.js';
 import { hashToken, newToken } from '../../lib/tokens.js';
 import {
   burnPasswordCheck,
@@ -51,15 +52,18 @@ export async function createSession(db: Db, userId: string, client: ClientInfo) 
   return { token };
 }
 
-export function revokeAllSessions(db: Db, userId: string, exceptSessionId?: string) {
-  return db.session.updateMany({
-    where: {
-      userId,
-      revokedAt: null,
-      ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}),
-    },
-    data: { revokedAt: new Date() },
-  });
+export async function revokeAllSessions(db: Db, userId: string, exceptSessionId?: string) {
+  const where = {
+    userId,
+    revokedAt: null,
+    ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}),
+  };
+  const ended = await db.session.findMany({ where, select: { id: true } });
+  const result = await db.session.updateMany({ where, data: { revokedAt: new Date() } });
+  // Close those sessions' live notification connections at once. If the surrounding
+  // transaction rolls back, the tabs simply reconnect with their still-valid sessions.
+  for (const s of ended) publishToUser(userId, { type: 'session-ended', sessionId: s.id });
+  return result;
 }
 
 export async function login(email: string, password: string, client: ClientInfo) {
@@ -111,10 +115,15 @@ export async function login(email: string, password: string, client: ClientInfo)
 }
 
 export async function logout(sessionId: string) {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { userId: true },
+  });
   await prisma.session.updateMany({
     where: { id: sessionId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+  if (session) publishToUser(session.userId, { type: 'session-ended', sessionId });
 }
 
 export async function getMe(userId: string): Promise<Me> {

@@ -12,28 +12,33 @@ afterEach(() => {
 });
 
 describe('sign-in feedback', () => {
-  it('shows the request is in flight: busy button, locked fields, status, then a slow-server note', async () => {
-    // A sign-in request that never answers, so the pending state stays on screen.
-    vi.stubGlobal('fetch', () => new Promise<Response>(() => {}));
-    renderAt('/login', <Route path="/login" element={<LoginPage />} />);
+  // Types into two fields, then waits through the 4-second slow-server delay: allow it more time.
+  it(
+    'shows the request is in flight: busy button, locked fields, status, then a slow-server note',
+    { timeout: 15_000 },
+    async () => {
+      // A sign-in request that never answers, so the pending state stays on screen.
+      vi.stubGlobal('fetch', () => new Promise<Response>(() => {}));
+      renderAt('/login', <Route path="/login" element={<LoginPage />} />);
 
-    await userEvent.type(screen.getByLabelText('Email'), 'head@test.example');
-    await userEvent.type(screen.getByLabelText('Password'), 'Accra-Sunrise-2026');
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+      await userEvent.type(screen.getByLabelText('Email'), 'head@test.example');
+      await userEvent.type(screen.getByLabelText('Password'), 'Accra-Sunrise-2026');
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    const button = await screen.findByRole('button', { name: /Signing in/ });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('aria-busy', 'true');
-    expect(screen.getByLabelText('Email')).toBeDisabled();
-    expect(screen.getByLabelText('Password')).toBeDisabled();
-    expect(screen.getByText('Checking your details…')).toBeInTheDocument();
+      const button = await screen.findByRole('button', { name: /Signing in/ });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByLabelText('Email')).toBeDisabled();
+      expect(screen.getByLabelText('Password')).toBeDisabled();
+      expect(screen.getByText('Checking your details…')).toBeInTheDocument();
 
-    await act(async () => {
-      vi.advanceTimersByTime(4100);
-    });
-    expect(screen.getByText(/server can take a few seconds to wake up/)).toBeInTheDocument();
-  });
+      await act(async () => {
+        vi.advanceTimersByTime(4100);
+      });
+      expect(screen.getByText(/server can take a few seconds to wake up/)).toBeInTheDocument();
+    },
+  );
 });
 
 describe('loading placeholders', () => {

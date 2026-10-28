@@ -1,8 +1,10 @@
+import type { AddressInfo } from 'node:net';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/db.js';
 import { addDays } from '../src/lib/dates.js';
 import {
   type Client,
+  app,
   createActiveTeacher,
   createSchoolWithHeadmaster,
   expectOk,
@@ -176,6 +178,116 @@ describe('timetable and pacing', () => {
     ).toBe(true);
     // Curriculum week 2 is no longer required, so no lesson is paced to it.
     expect(await lessonsOfWeek(w, 2)).toHaveLength(0);
+  });
+});
+
+describe('live notifications', () => {
+  /** Opens the stream on a real HTTP server, as the browser does, and collects its events. */
+  async function openStream(token: string | null) {
+    const server = app.listen(0);
+    await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+    const { port } = server.address() as AddressInfo;
+    const controller = new AbortController();
+    const res = await fetch(`http://127.0.0.1:${port}/api/v1/notifications/stream`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: controller.signal,
+    });
+    const events: { event: string; data: unknown }[] = [];
+    let ended = false;
+    if (res.ok && res.body) {
+      void (async () => {
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let cut;
+            while ((cut = buffer.indexOf('\n\n')) >= 0) {
+              const block = buffer.slice(0, cut);
+              buffer = buffer.slice(cut + 2);
+              const event = /^event: (.*)$/m.exec(block)?.[1];
+              const data = /^data: (.*)$/m.exec(block)?.[1];
+              if (event) events.push({ event, data: data ? JSON.parse(data) : null });
+            }
+          }
+        } catch {
+          // Aborted by the test.
+        }
+        ended = true;
+      })();
+    }
+    const waitFor = async (check: () => boolean, ms = 3000) => {
+      const start = Date.now();
+      while (!check()) {
+        if (Date.now() - start > ms)
+          throw new Error(`Timed out; events so far: ${JSON.stringify(events)}`);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+    const close = () => {
+      controller.abort();
+      server.closeAllConnections();
+      server.close();
+    };
+    return { res, events, waitFor, isEnded: () => ended, close };
+  }
+
+  it('refuses the stream without a valid session', async () => {
+    const stream = await openStream(null);
+    expect(stream.res.status).toBe(401);
+    stream.close();
+  });
+
+  it('pushes a submitted record to the headmaster at once, without polling', async () => {
+    const w = await world();
+    const stream = await openStream(w.head.token);
+    try {
+      expect(stream.res.headers.get('content-type')).toContain('text/event-stream');
+      await stream.waitFor(() => stream.events.some((e) => e.event === 'ready'));
+
+      const [first] = await lessonsOfWeek(w, 1);
+      const submitted = expectOk(await submit(w, first!.id));
+      await stream.waitFor(() => stream.events.some((e) => e.event === 'notification'));
+
+      const pushed = stream.events.find((e) => e.event === 'notification')!.data as {
+        title: string;
+        recordId: string;
+      };
+      expect(pushed.recordId).toBe(submitted.body.data.record.id);
+      expect(pushed.title).toContain('Kofi Boateng recorded Mathematics, B7A');
+    } finally {
+      stream.close();
+    }
+  });
+
+  it('does not push drafts', async () => {
+    const w = await world();
+    const stream = await openStream(w.head.token);
+    try {
+      await stream.waitFor(() => stream.events.some((e) => e.event === 'ready'));
+      const [first] = await lessonsOfWeek(w, 1);
+      expectOk(await submit(w, first!.id, 'DRAFT'));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(stream.events.some((e) => e.event === 'notification')).toBe(false);
+    } finally {
+      stream.close();
+    }
+  });
+
+  it('closes the stream when that tab signs out', async () => {
+    const w = await world();
+    const stream = await openStream(w.head.token);
+    try {
+      await stream.waitFor(() => stream.events.some((e) => e.event === 'ready'));
+      expect((await w.head.post('/auth/logout')).status).toBe(204);
+      await stream.waitFor(() => stream.events.some((e) => e.event === 'session-ended'));
+      await stream.waitFor(() => stream.isEnded());
+    } finally {
+      stream.close();
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from 'react';
+import { useCallback, useState, type ComponentType } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +23,11 @@ import type { Permission } from '@school/shared';
 import { api, setSessionToken } from '../lib/api';
 import { useCurrentUser } from '../features/auth/useMe';
 import { NotificationBell } from '../features/notifications/NotificationBell';
+import { LiveToast } from '../features/notifications/LiveToast';
+import {
+  useLiveNotifications,
+  type LiveNotification,
+} from '../features/notifications/useLiveNotifications';
 
 interface NavItem {
   to: string;
@@ -104,6 +109,16 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
     (i) => !i.permission || me.permissions.includes(i.permission),
   );
   const base = area === 'teacher' ? '/t' : '/h';
+
+  // New notifications arrive the moment they happen; show each one briefly.
+  const [toast, setToast] = useState<LiveNotification | null>(null);
+  const closeToast = useCallback(() => setToast(null), []);
+  const { connected } = useLiveNotifications(setToast);
+  const toastHref = toast?.recordId
+    ? area === 'headmaster'
+      ? `/h/activity?record=${toast.recordId}`
+      : `/t/records/${toast.recordId}`
+    : null;
 
   async function signOut() {
     try {
@@ -217,12 +232,14 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
           </button>
           <span className="truncate text-sm text-muted lg:hidden">{me.school.name}</span>
         </div>
-        <NotificationBell to={`${base}/notifications`} />
+        <NotificationBell to={`${base}/notifications`} live={connected} />
       </header>
 
       <main id="main" className="mx-auto max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:pb-8">
         <Outlet />
       </main>
+
+      <LiveToast notification={toast} href={toastHref} onClose={closeToast} />
 
       {/* Mobile bottom bar */}
       <nav
