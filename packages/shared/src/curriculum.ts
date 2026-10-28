@@ -56,6 +56,17 @@ export const bulkReviewBody = z.object({
   note: z.string().trim().max(1000).default('Approved as printed: the source text is cut off.'),
 });
 
+/** The headmaster's correction of one published topic. Only the fields sent are changed. */
+export const updateEntryBody = z
+  .object({
+    strand: z.string().trim().min(1).max(500).optional(),
+    subStrand: z.string().trim().max(500).optional(),
+    contentStandard: z.string().trim().max(4000).optional(),
+    indicator: z.string().trim().min(1).max(4000).optional(),
+    weekNumber: z.number().int().min(1).max(20).optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), 'Change at least one field');
+
 export const listImportRowsQuery = paginationQuery.extend({
   flagged: z.enum(['true', 'false']).optional(),
   decision: z.enum(['PENDING', 'APPROVED', 'CORRECTED', 'REJECTED']).optional(),

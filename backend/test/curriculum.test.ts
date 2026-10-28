@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/db.js';
 import { extractSchemePdf } from '../src/modules/curriculum/pdfExtract.js';
+import { acceptUpload } from '../src/modules/curriculum/curriculum.service.js';
 import {
   createActiveTeacher,
   createSchoolWithHeadmaster,
@@ -40,6 +41,80 @@ describe('bulk approval of cut-off rows', () => {
 
     // The remaining flagged row still blocks approval until reviewed.
     expect((await head.post(`/curriculum/imports/${imp.body.data.id}/approve`)).status).toBe(409);
+  });
+});
+
+describe('accepting an upload without review', () => {
+  async function staged() {
+    const { client: head, user } = await createSchoolWithHeadmaster();
+    const { termId } = await setupTerm(head, 0);
+    const body = sampleImport(termId);
+    body.rows[0]!.indicator = 'B7.1.1.1.1 Model number quantities .......';
+    body.rows[1]!.indicator = 'B8.1.1.2.1 Wrong level code';
+    body.rows.push({ ...body.rows[2]!, subject: 'Underwater Basket Weaving' });
+    const imp = expectOk(await head.post('/curriculum/imports', body));
+    const actor = { schoolId: user.schoolId, userId: user.id, requestId: 'test' };
+    return { head, actor, termId, batchId: imp.body.data.id as string };
+  }
+
+  it('publishes every row as printed, leaving out only unknown subjects', async () => {
+    const { head, actor, batchId } = await staged();
+    const res = await acceptUpload(actor, batchId, { publish: true });
+    expect(res.published).toBe(true);
+    expect(res.report.imported).toBe(12);
+    expect(res.report.rejected).toBe(1);
+    const scheme = await prisma.curriculumScheme.findUniqueOrThrow({ where: { id: res.schemeId } });
+    expect(scheme.status).toBe('PUBLISHED');
+    const cur = expectOk(await head.get('/curriculum?level=BASIC_7&weekNumber=1'));
+    expect(cur.body.data.entries[0].isTruncated).toBe(true);
+  });
+
+  it('leaves a school admin’s upload as a draft for the headmaster', async () => {
+    const { actor, batchId } = await staged();
+    const res = await acceptUpload(actor, batchId, { publish: false });
+    const scheme = await prisma.curriculumScheme.findUniqueOrThrow({ where: { id: res.schemeId } });
+    expect(scheme.status).toBe('DRAFT');
+  });
+});
+
+describe('editing a published topic', () => {
+  it('lets the headmaster correct a topic, audits it, and keeps a used topic in its week', async () => {
+    const { client: head, user } = await createSchoolWithHeadmaster();
+    const { termId } = await setupTerm(head, 0);
+    const imp = expectOk(await head.post('/curriculum/imports', sampleImport(termId)));
+    await acceptUpload(
+      { schoolId: user.schoolId, userId: user.id, requestId: 'test' },
+      imp.body.data.id,
+      { publish: true },
+    );
+    const entry = await prisma.curriculumEntry.findFirstOrThrow({ where: { weekNumber: 1 } });
+
+    const fixed = expectOk(
+      await head.patch(`/curriculum/entries/${entry.id}`, {
+        indicator: 'B7.1.1.1.1 Model number quantities up to 1,000,000',
+        weekNumber: 2,
+      }),
+    );
+    expect(fixed.body.data.indicator).toContain('1,000,000');
+    expect(fixed.body.data.weekNumber).toBe(2);
+    expect(fixed.body.data.isTruncated).toBe(false);
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { action: 'curriculum.topic_edited', entityId: entry.id },
+    });
+    expect(log.metadata).toMatchObject({ before: { weekNumber: 1 }, after: { weekNumber: 2 } });
+
+    expect((await head.patch(`/curriculum/entries/${entry.id}`, {})).status).toBe(422);
+
+    // A teacher cannot edit the scheme.
+    const { client: teacher } = await createActiveTeacher(head, {
+      fullName: 'Ama Owusu',
+      email: 'ama@test.example',
+      staffId: 'GES-9',
+      assignments: [],
+    });
+    expect(
+      (await teacher.patch(`/curriculum/entries/${entry.id}`, { indicator: 'x' })).status,
+    ).toBe(403);
   });
 });
 
@@ -89,7 +164,7 @@ describe.skipIf(!schemePdf || !existsSync(schemePdf))('real scheme-of-learning P
     expect(result.rows.some((r) => r.level === 'BASIC_9' && r.weekNumber === 11)).toBe(false);
   });
 
-  it('stages the upload through the API, idempotently', async () => {
+  it('accepts and publishes the upload at once, idempotently', async () => {
     const { client: head } = await createSchoolWithHeadmaster();
     const { termId } = await setupTerm(head, 0);
     const send = () =>
@@ -102,6 +177,9 @@ describe.skipIf(!schemePdf || !existsSync(schemePdf))('real scheme-of-learning P
     expect(first.status).toBe(201);
     expect(first.body.data.counts.total).toBeGreaterThan(700);
     expect(first.body.data.report.warnings).toEqual([]);
+    expect(first.body.data.status).toBe('IMPORTED');
+    expect(first.body.data.scheme.status).toBe('PUBLISHED');
+    expect(first.body.data.counts.decisions.PENDING).toBeUndefined();
     const second = await send();
     expect(second.status).toBe(200);
     expect(second.body.data.id).toBe(first.body.data.id);
@@ -109,7 +187,7 @@ describe.skipIf(!schemePdf || !existsSync(schemePdf))('real scheme-of-learning P
 });
 
 describe.skipIf(!schemePdf || !existsSync(schemePdf))('real PDF, end to end', () => {
-  it('upload, bulk-approve, review the rest, approve, publish, and record a lesson against a real topic', async () => {
+  it('upload publishes at once, and a teacher records a lesson against a real topic', async () => {
     const { client: head } = await createSchoolWithHeadmaster();
     const { termId } = await setupTerm(head, 3);
     const upload = await head.agent
@@ -118,28 +196,8 @@ describe.skipIf(!schemePdf || !existsSync(schemePdf))('real PDF, end to end', ()
       .set('Content-Type', 'application/pdf')
       .send(readFileSync(schemePdf!));
     expect(upload.status).toBe(201);
-    const batchId = upload.body.data.id as string;
-
-    expectOk(
-      await head.post(`/curriculum/imports/${batchId}/rows/bulk-review`, { flag: 'TRUNCATED' }),
-    );
-    const rest = expectOk(
-      await head.get(
-        `/curriculum/imports/${batchId}/rows?flagged=true&decision=PENDING&pageSize=200`,
-      ),
-    );
-    expect(rest.body.data.length).toBeLessThan(40);
-    for (const row of rest.body.data as { id: string }[]) {
-      expectOk(
-        await head.patch(`/curriculum/imports/${batchId}/rows/${row.id}`, {
-          decision: 'APPROVED',
-          note: 'Checked against the PDF',
-        }),
-      );
-    }
-    const approved = expectOk(await head.post(`/curriculum/imports/${batchId}/approve`));
-    expect(approved.body.data.report.imported).toBeGreaterThan(700);
-    expectOk(await head.post(`/curriculum/schemes/${approved.body.data.schemeId}/publish`));
+    expect(upload.body.data.scheme.status).toBe('PUBLISHED');
+    expect(upload.body.data.report.imported).toBeGreaterThan(700);
 
     // Basic 9 has no topics in the mock week.
     const mock = await prisma.curriculumEntry.count({

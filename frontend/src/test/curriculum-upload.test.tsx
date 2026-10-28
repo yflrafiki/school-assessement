@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route } from 'react-router-dom';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { CurriculumPage } from '../features/headmaster/CurriculumPage';
 import { makeMe, mockApi, renderAt } from './render';
 
@@ -18,9 +19,47 @@ const term = {
   weekCount: 14,
 };
 
+const entry = {
+  id: 'e1',
+  level: 'BASIC_7',
+  subjectId: 'sub-math',
+  weekNumber: 1,
+  strand: 'Number',
+  subStrand: 'Number and numeration systems',
+  contentStandard: 'B7.1.1.1 Demonstrate understanding',
+  indicator: 'B7.1.1.1.1 Model number quantities .......',
+  isTruncated: true,
+  sourcePage: 8,
+};
+
 function api(terms: unknown[]) {
-  return mockApi((_m, path) => {
+  return mockApi((method, path) => {
     if (path === '/terms') return { status: 200, body: { data: terms } };
+    if (path === '/subjects')
+      return {
+        status: 200,
+        body: {
+          data: [
+            {
+              id: 'sub-math',
+              name: 'Mathematics',
+              code: 'MATH',
+              isNational: true,
+              isFramework: false,
+              parentSubjectId: null,
+              isActive: true,
+              assignable: true,
+            },
+          ],
+        },
+      };
+    if (path.startsWith('/curriculum?'))
+      return {
+        status: 200,
+        body: { data: { scheme: { title: 'v1' }, weeks: [], entries: [entry] } },
+      };
+    if (method === 'PATCH' && path === '/curriculum/entries/e1')
+      return { status: 200, body: { data: entry } };
     if (path === '/curriculum/schemes') return { status: 200, body: { data: [] } };
     if (path === '/curriculum/imports') return { status: 200, body: { data: [] } };
     return undefined;
@@ -52,10 +91,33 @@ describe('scheme of learning upload', () => {
     );
     const button = await screen.findByRole('button', { name: /Choose the PDF and upload/ });
     expect(button).toBeEnabled();
-    expect(screen.getByRole('combobox')).toHaveDisplayValue(/First Term 2026\/2027 \(current\)/);
+    expect(screen.getByRole('combobox', { name: 'Term' })).toHaveDisplayValue(
+      /First Term 2026\/2027 \(current\)/,
+    );
     expect(document.querySelector('input[type="file"]')).toHaveAttribute(
       'accept',
       'application/pdf,.pdf',
+    );
+  });
+
+  it('lists the live topics and lets the headmaster correct one', async () => {
+    const calls = api([term]);
+    renderAt(
+      '/h/curriculum',
+      <Route path="/h/curriculum" element={<CurriculumPage />} />,
+      makeMe('HEADMASTER'),
+    );
+    expect(await screen.findByText(/Model number quantities/)).toBeInTheDocument();
+    expect(screen.getByText(/Mathematics · Basic 7 · Week 1/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const indicator = await screen.findByLabelText('Indicator');
+    await userEvent.clear(indicator);
+    await userEvent.type(indicator, 'B7.1.1.1.1 Model number quantities up to 1,000,000');
+    await userEvent.click(screen.getByRole('button', { name: 'Save topic' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({
+        indicator: 'B7.1.1.1.1 Model number quantities up to 1,000,000',
+      }),
     );
   });
 });

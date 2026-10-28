@@ -6,6 +6,7 @@ import type {
   curriculumQuery,
   listImportRowsQuery,
   reviewImportRowBody,
+  updateEntryBody,
 } from '@school/shared';
 import { prisma, type Prisma } from '../../lib/db.js';
 import { AppError, conflict, notFound, validation } from '../../lib/errors.js';
@@ -183,10 +184,13 @@ export async function listImportRows(
   return { data: rows, meta: pageMeta(q.page, q.pageSize, total) };
 }
 
-/** Reads the PDF, then stages it through the same pipeline as an uploaded extraction. */
+/**
+ * Reads the PDF, stages it through the same pipeline as an uploaded extraction, then accepts
+ * every row (and publishes, when the uploader may) so the topics are live straight away.
+ */
 export async function createImportFromPdf(
   actor: Actor,
-  input: { termId: string; fileName: string; data: Uint8Array },
+  input: { termId: string; fileName: string; data: Uint8Array; publish: boolean },
 ) {
   let extraction;
   try {
@@ -223,7 +227,14 @@ export async function createImportFromPdf(
     weeks: extraction.weeks,
     rows: extraction.rows,
   });
-  return createImport(actor, body);
+  const staged = await createImport(actor, body);
+  // The same file again returns the earlier import; one left staged by the old review flow
+  // is accepted now.
+  if (staged.batch.status === 'STAGED') {
+    await acceptUpload(actor, staged.batch.id, { publish: input.publish });
+    return { batch: await getImport(actor.schoolId, staged.batch.id), created: staged.created };
+  }
+  return staged;
 }
 
 export async function bulkApprove(
@@ -305,152 +316,210 @@ export async function reviewRow(
  * be reviewed; unflagged pending rows are approved as extracted.
  */
 export async function approveImport(actor: Actor, batchId: string) {
+  return prisma.$transaction((tx) => approveBatch(tx, actor, batchId, { acceptAll: false }), {
+    timeout: 120_000,
+  });
+}
+
+/**
+ * The headmaster's upload: every row is accepted as printed and the scheme goes live at once.
+ * Rows for subjects the system does not know are left out and counted in the report. Topics
+ * are corrected afterwards (updateEntry). A school admin's upload stays a draft for the
+ * headmaster to publish.
+ */
+export async function acceptUpload(actor: Actor, batchId: string, opts: { publish: boolean }) {
   return prisma.$transaction(
     async (tx) => {
-      const batch = await tx.importBatch.findFirst({
-        where: { id: batchId, schoolId: actor.schoolId },
-      });
-      if (!batch) throw notFound('Import');
-      if (batch.status !== 'STAGED') throw conflict('This import has already been processed');
-
-      const pendingFlagged = await tx.importRow.count({
-        where: { batchId, decision: 'PENDING', NOT: { flags: { isEmpty: true } } },
-      });
-      if (pendingFlagged) {
-        throw new AppError(
-          'CONFLICT',
-          `${pendingFlagged} flagged rows still need a review decision`,
-          { pendingFlagged },
-        );
-      }
-
-      const subjects = await tx.subject.findMany({ where: { schoolId: null } });
-      const subjectByCode = new Map(subjects.map((s) => [s.code, s]));
-      const rows = await tx.importRow.findMany({
-        where: { batchId },
-        orderBy: { rowIndex: 'asc' },
-      });
-
-      const unknown = new Set<string>();
-      for (const r of rows) {
-        const code = subjectCodeFor(r.subjectName);
-        if (!code || !subjectByCode.has(code)) unknown.add(r.subjectName);
-      }
-      if (unknown.size) {
-        throw validation({
-          subjects: [...unknown].map(
-            (s) => `Unknown subject "${s}". Reject these rows or fix the extraction.`,
-          ),
-        });
-      }
-
-      const version = (await tx.curriculumScheme.count({ where: { termId: batch.termId } })) + 1;
-      const term = await tx.term.findUniqueOrThrow({ where: { id: batch.termId } });
-      const scheme = await tx.curriculumScheme.create({
-        data: {
-          schoolId: actor.schoolId,
-          termId: batch.termId,
-          version,
-          title: `${term.name} scheme of learning v${version}`,
-          importBatchId: batch.id,
-        },
-      });
-
-      const weeks = batch.weeks as {
-        level: Level;
-        weekNumber: number;
-        kind: 'TEACHING' | 'REVISION' | 'MOCK' | 'EXAMINATION';
-        label?: string;
-      }[];
-      await tx.curriculumWeek.createMany({
-        data: weeks.map((w) => ({
-          schemeId: scheme.id,
-          level: w.level,
-          weekNumber: w.weekNumber,
-          kind: w.kind,
-          label: w.label ?? null,
-        })),
-        skipDuplicates: true,
-      });
-
-      let imported = 0;
-      let rejected = 0;
-      let duplicates = 0;
-      const seen = new Set<string>();
-      const entries: Prisma.CurriculumEntryCreateManyInput[] = [];
-      for (const r of rows) {
-        if (r.decision === 'REJECTED') {
-          rejected += 1;
-          continue;
-        }
-        const c = (r.decision === 'CORRECTED' ? r.corrected : null) as Record<
-          string,
-          string | number | undefined
-        > | null;
-        const text = {
-          strand: String(c?.strand ?? r.strand),
-          subStrand: String(c?.subStrand ?? r.subStrand),
-          contentStandard: String(c?.contentStandard ?? r.contentStandard),
-          indicator: String(c?.indicator ?? r.indicator),
-        };
-        const weekNumber = Number(c?.weekNumber ?? r.weekNumber);
-        const subject = subjectByCode.get(subjectCodeFor(r.subjectName) as string)!;
-        const key = naturalKey(r.level, subject.id, weekNumber, text);
-        if (seen.has(key)) {
-          duplicates += 1;
-          continue;
-        }
-        seen.add(key);
-        entries.push({
-          schoolId: actor.schoolId,
-          schemeId: scheme.id,
-          level: r.level,
-          subjectId: subject.id,
-          weekNumber,
-          ...text,
-          isTruncated:
-            r.flags.includes('TRUNCATED') &&
-            /(\.{4,}|…)/.test(`${text.contentStandard} ${text.indicator}`),
-          sourcePage: r.sourcePage,
-          naturalKey: key,
-          sortOrder: r.rowIndex,
-        });
-        imported += 1;
-      }
-      await tx.curriculumEntry.createMany({ data: entries, skipDuplicates: true });
-
-      const report = {
-        ...(batch.report as Record<string, unknown>),
-        imported,
-        rejected,
-        duplicates,
-        skipped: rejected + duplicates,
-        corrected: rows.filter((r) => r.decision === 'CORRECTED').length,
-        flagged: rows.filter((r) => r.flags.length).length,
-        schemeId: scheme.id,
-        version,
-      };
-      await tx.importBatch.update({
-        where: { id: batch.id },
-        data: { status: 'IMPORTED', importedAt: new Date(), report },
-      });
-      await tx.importRow.updateMany({
-        where: { batchId, decision: 'PENDING' },
-        data: { decision: 'APPROVED' },
-      });
-      await audit(tx, {
-        schoolId: actor.schoolId,
-        actorId: actor.userId,
-        action: 'curriculum.import_approved',
-        entityType: 'ImportBatch',
-        entityId: batch.id,
-        metadata: report,
-        requestId: actor.requestId,
-      });
-      return { schemeId: scheme.id, report };
+      const approved = await approveBatch(tx, actor, batchId, { acceptAll: true });
+      if (opts.publish) await publishInTx(tx, actor, approved.schemeId);
+      return { ...approved, published: opts.publish };
     },
     { timeout: 120_000 },
   );
+}
+
+async function approveBatch(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  batchId: string,
+  opts: { acceptAll: boolean },
+) {
+  const batch = await tx.importBatch.findFirst({
+    where: { id: batchId, schoolId: actor.schoolId },
+  });
+  if (!batch) throw notFound('Import');
+  if (batch.status !== 'STAGED') throw conflict('This import has already been processed');
+
+  const subjects = await tx.subject.findMany({ where: { schoolId: null } });
+  const subjectByCode = new Map(subjects.map((s) => [s.code, s]));
+  const isKnown = (name: string) => {
+    const code = subjectCodeFor(name);
+    return !!code && subjectByCode.has(code);
+  };
+
+  if (opts.acceptAll) {
+    const pending = await tx.importRow.findMany({
+      where: { batchId, decision: 'PENDING' },
+      select: { id: true, subjectName: true },
+    });
+    const unknownIds = pending.filter((r) => !isKnown(r.subjectName)).map((r) => r.id);
+    const now = new Date();
+    if (unknownIds.length) {
+      await tx.importRow.updateMany({
+        where: { id: { in: unknownIds } },
+        data: {
+          decision: 'REJECTED',
+          reviewNote: 'Left out on upload: the subject is not one the system knows.',
+          reviewedById: actor.userId,
+          reviewedAt: now,
+        },
+      });
+    }
+    await tx.importRow.updateMany({
+      where: { batchId, decision: 'PENDING' },
+      data: {
+        decision: 'APPROVED',
+        reviewNote: 'Accepted as printed on upload.',
+        reviewedById: actor.userId,
+        reviewedAt: now,
+      },
+    });
+  } else {
+    const pendingFlagged = await tx.importRow.count({
+      where: { batchId, decision: 'PENDING', NOT: { flags: { isEmpty: true } } },
+    });
+    if (pendingFlagged) {
+      throw new AppError(
+        'CONFLICT',
+        `${pendingFlagged} flagged rows still need a review decision`,
+        {
+          pendingFlagged,
+        },
+      );
+    }
+  }
+
+  const rows = await tx.importRow.findMany({
+    where: { batchId },
+    orderBy: { rowIndex: 'asc' },
+  });
+
+  const unknown = new Set<string>();
+  for (const r of rows) {
+    if (r.decision !== 'REJECTED' && !isKnown(r.subjectName)) unknown.add(r.subjectName);
+  }
+  if (unknown.size) {
+    throw validation({
+      subjects: [...unknown].map(
+        (s) => `Unknown subject "${s}". Reject these rows or fix the extraction.`,
+      ),
+    });
+  }
+
+  const version = (await tx.curriculumScheme.count({ where: { termId: batch.termId } })) + 1;
+  const term = await tx.term.findUniqueOrThrow({ where: { id: batch.termId } });
+  const scheme = await tx.curriculumScheme.create({
+    data: {
+      schoolId: actor.schoolId,
+      termId: batch.termId,
+      version,
+      title: `${term.name} scheme of learning v${version}`,
+      importBatchId: batch.id,
+    },
+  });
+
+  const weeks = batch.weeks as {
+    level: Level;
+    weekNumber: number;
+    kind: 'TEACHING' | 'REVISION' | 'MOCK' | 'EXAMINATION';
+    label?: string;
+  }[];
+  await tx.curriculumWeek.createMany({
+    data: weeks.map((w) => ({
+      schemeId: scheme.id,
+      level: w.level,
+      weekNumber: w.weekNumber,
+      kind: w.kind,
+      label: w.label ?? null,
+    })),
+    skipDuplicates: true,
+  });
+
+  let imported = 0;
+  let rejected = 0;
+  let duplicates = 0;
+  const seen = new Set<string>();
+  const entries: Prisma.CurriculumEntryCreateManyInput[] = [];
+  for (const r of rows) {
+    if (r.decision === 'REJECTED') {
+      rejected += 1;
+      continue;
+    }
+    const c = (r.decision === 'CORRECTED' ? r.corrected : null) as Record<
+      string,
+      string | number | undefined
+    > | null;
+    const text = {
+      strand: String(c?.strand ?? r.strand),
+      subStrand: String(c?.subStrand ?? r.subStrand),
+      contentStandard: String(c?.contentStandard ?? r.contentStandard),
+      indicator: String(c?.indicator ?? r.indicator),
+    };
+    const weekNumber = Number(c?.weekNumber ?? r.weekNumber);
+    const subject = subjectByCode.get(subjectCodeFor(r.subjectName) as string)!;
+    const key = naturalKey(r.level, subject.id, weekNumber, text);
+    if (seen.has(key)) {
+      duplicates += 1;
+      continue;
+    }
+    seen.add(key);
+    entries.push({
+      schoolId: actor.schoolId,
+      schemeId: scheme.id,
+      level: r.level,
+      subjectId: subject.id,
+      weekNumber,
+      ...text,
+      isTruncated:
+        r.flags.includes('TRUNCATED') &&
+        /(\.{4,}|…)/.test(`${text.contentStandard} ${text.indicator}`),
+      sourcePage: r.sourcePage,
+      naturalKey: key,
+      sortOrder: r.rowIndex,
+    });
+    imported += 1;
+  }
+  await tx.curriculumEntry.createMany({ data: entries, skipDuplicates: true });
+
+  const report = {
+    ...(batch.report as Record<string, unknown>),
+    imported,
+    rejected,
+    duplicates,
+    skipped: rejected + duplicates,
+    corrected: rows.filter((r) => r.decision === 'CORRECTED').length,
+    flagged: rows.filter((r) => r.flags.length).length,
+    schemeId: scheme.id,
+    version,
+  };
+  await tx.importBatch.update({
+    where: { id: batch.id },
+    data: { status: 'IMPORTED', importedAt: new Date(), report },
+  });
+  await tx.importRow.updateMany({
+    where: { batchId, decision: 'PENDING' },
+    data: { decision: 'APPROVED' },
+  });
+  await audit(tx, {
+    schoolId: actor.schoolId,
+    actorId: actor.userId,
+    action: 'curriculum.import_approved',
+    entityType: 'ImportBatch',
+    entityId: batch.id,
+    metadata: report,
+    requestId: actor.requestId,
+  });
+  return { schemeId: scheme.id, report };
 }
 
 // ---------- Schemes ----------
@@ -474,50 +543,113 @@ export async function listSchemes(schoolId: string, termId?: string) {
 }
 
 export async function publishScheme(actor: Actor, schemeId: string) {
-  return prisma.$transaction(
-    async (tx) => {
-      const scheme = await tx.curriculumScheme.findFirst({
-        where: { id: schemeId, schoolId: actor.schoolId },
-      });
-      if (!scheme) throw notFound('Scheme');
-      if (scheme.status === 'PUBLISHED') throw conflict('This scheme is already published');
-      const previous = await tx.curriculumScheme.findFirst({
-        where: { termId: scheme.termId, status: 'PUBLISHED' },
-        select: { id: true },
-      });
-      if (previous) {
-        await tx.curriculumScheme.update({
-          where: { id: previous.id },
-          data: { status: 'ARCHIVED' },
-        });
-        // Entries of the old version stay for records that reference them, but are retired.
-        await tx.curriculumEntry.updateMany({
-          where: { schemeId: previous.id, retiredAt: null },
-          data: { retiredAt: new Date() },
-        });
-      }
-      await tx.curriculumScheme.update({
-        where: { id: scheme.id },
-        data: { status: 'PUBLISHED', publishedAt: new Date(), publishedById: actor.userId },
-      });
-      const synced = await syncSchoolAssignments(tx, actor.schoolId, { termId: scheme.termId });
-      await audit(tx, {
-        schoolId: actor.schoolId,
-        actorId: actor.userId,
-        action: 'curriculum.scheme_published',
-        entityType: 'CurriculumScheme',
-        entityId: scheme.id,
-        metadata: {
-          version: scheme.version,
-          replaced: previous?.id ?? null,
-          assignmentsRepaced: synced,
-        },
-        requestId: actor.requestId,
-      });
-      return { id: scheme.id, status: 'PUBLISHED' as const };
+  return prisma.$transaction((tx) => publishInTx(tx, actor, schemeId), { timeout: 120_000 });
+}
+
+async function publishInTx(tx: Prisma.TransactionClient, actor: Actor, schemeId: string) {
+  const scheme = await tx.curriculumScheme.findFirst({
+    where: { id: schemeId, schoolId: actor.schoolId },
+  });
+  if (!scheme) throw notFound('Scheme');
+  if (scheme.status === 'PUBLISHED') throw conflict('This scheme is already published');
+  const previous = await tx.curriculumScheme.findFirst({
+    where: { termId: scheme.termId, status: 'PUBLISHED' },
+    select: { id: true },
+  });
+  if (previous) {
+    await tx.curriculumScheme.update({
+      where: { id: previous.id },
+      data: { status: 'ARCHIVED' },
+    });
+    // Entries of the old version stay for records that reference them, but are retired.
+    await tx.curriculumEntry.updateMany({
+      where: { schemeId: previous.id, retiredAt: null },
+      data: { retiredAt: new Date() },
+    });
+  }
+  await tx.curriculumScheme.update({
+    where: { id: scheme.id },
+    data: { status: 'PUBLISHED', publishedAt: new Date(), publishedById: actor.userId },
+  });
+  const synced = await syncSchoolAssignments(tx, actor.schoolId, { termId: scheme.termId });
+  await audit(tx, {
+    schoolId: actor.schoolId,
+    actorId: actor.userId,
+    action: 'curriculum.scheme_published',
+    entityType: 'CurriculumScheme',
+    entityId: scheme.id,
+    metadata: {
+      version: scheme.version,
+      replaced: previous?.id ?? null,
+      assignmentsRepaced: synced,
     },
-    { timeout: 120_000 },
-  );
+    requestId: actor.requestId,
+  });
+  return { id: scheme.id, status: 'PUBLISHED' as const };
+}
+
+// ---------- Editing topics ----------
+
+/**
+ * Corrects one topic of a live or draft scheme. Lesson records point at topics, so a fix to
+ * the wording shows on them too; moving a topic another week is refused once lessons have
+ * been recorded against it, because those records belong to the week they were taught in.
+ */
+export async function updateEntry(
+  actor: Actor,
+  entryId: string,
+  input: z.infer<typeof updateEntryBody>,
+) {
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.curriculumEntry.findFirst({
+      where: { id: entryId, schoolId: actor.schoolId },
+      include: { scheme: { select: { status: true } }, _count: { select: { topics: true } } },
+    });
+    if (!entry) throw notFound('Topic');
+    if (entry.scheme.status === 'ARCHIVED' || entry.retiredAt) {
+      throw conflict('This topic belongs to an older scheme and can no longer be changed');
+    }
+    const next = {
+      strand: input.strand ?? entry.strand,
+      subStrand: input.subStrand ?? entry.subStrand,
+      contentStandard: input.contentStandard ?? entry.contentStandard,
+      indicator: input.indicator ?? entry.indicator,
+      weekNumber: input.weekNumber ?? entry.weekNumber,
+    };
+    if (next.weekNumber !== entry.weekNumber && entry._count.topics) {
+      throw conflict(
+        'Lessons have already been recorded against this topic, so it cannot move to another week',
+      );
+    }
+    const updated = await tx.curriculumEntry.update({
+      where: { id: entry.id },
+      data: {
+        ...next,
+        isTruncated: /(\.{4,}|…)/.test(`${next.contentStandard} ${next.indicator}`),
+        naturalKey: naturalKey(entry.level, entry.subjectId, next.weekNumber, next),
+      },
+      select: entrySelect,
+    });
+    await audit(tx, {
+      schoolId: actor.schoolId,
+      actorId: actor.userId,
+      action: 'curriculum.topic_edited',
+      entityType: 'CurriculumEntry',
+      entityId: entry.id,
+      metadata: {
+        before: {
+          strand: entry.strand,
+          subStrand: entry.subStrand,
+          contentStandard: entry.contentStandard,
+          indicator: entry.indicator,
+          weekNumber: entry.weekNumber,
+        },
+        after: next,
+      },
+      requestId: actor.requestId,
+    });
+    return updated;
+  });
 }
 
 // ---------- Reading the curriculum ----------

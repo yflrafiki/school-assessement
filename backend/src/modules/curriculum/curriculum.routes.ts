@@ -6,6 +6,8 @@ import {
   curriculumQuery,
   listImportRowsQuery,
   reviewImportRowBody,
+  updateEntryBody,
+  ROLE_PERMISSIONS,
   uuid,
 } from '@school/shared';
 import { auth, body, idParam, query } from '../../lib/http.js';
@@ -49,6 +51,16 @@ curriculumRouter.post(
   },
 );
 
+curriculumRouter.patch(
+  '/curriculum/entries/:id',
+  requirePermission('school.setup'),
+  async (req, res) => {
+    res.json({
+      data: await service.updateEntry(actor(req), idParam(req), body(req, updateEntryBody)),
+    });
+  },
+);
+
 curriculumRouter.get('/curriculum/imports', importer, async (req, res) => {
   res.json({ data: await service.listImports(auth(req).schoolId) });
 });
@@ -85,6 +97,8 @@ curriculumRouter.post(
       termId,
       fileName,
       data,
+      // The headmaster's upload goes live at once; a school admin's waits for the headmaster.
+      publish: ROLE_PERMISSIONS[auth(req).role].includes('school.setup'),
     });
     res.status(created ? 201 : 200).json({ data: batch, meta: { created } });
   },

@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FiUpload } from 'react-icons/fi';
-import { createImportBody } from '@school/shared';
 import { api, type One } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
 import { fullErrorMessage } from '../../lib/forms';
@@ -14,6 +13,7 @@ import { ConfirmDialog } from '../../components/Overlays';
 import { useCan } from '../auth/useMe';
 import { useTerms } from '../reference';
 import type { ImportBatch } from '../../types/api';
+import { CurriculumTopics } from './CurriculumTopics';
 
 interface Scheme {
   id: string;
@@ -34,6 +34,7 @@ export function CurriculumPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [termId, setTermId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<Scheme | null>(null);
   const effectiveTerm = termId || terms.data?.find((t) => t.isCurrent)?.id || '';
 
@@ -53,29 +54,27 @@ export function CurriculumPage() {
 
   const upload = useMutation({
     mutationFn: async (file: File) => {
-      // The scheme-of-learning PDF is read on the server. A JSON extraction is still accepted.
-      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-        return api.upload<One<ImportBatch>>('/curriculum/imports/pdf', file, 'application/pdf', {
-          termId: effectiveTerm,
-          fileName: file.name,
-        });
-      }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(await file.text());
-      } catch {
+      if (file.type !== 'application/pdf' && !/.pdf$/i.test(file.name)) {
         throw new Error('Upload the scheme of learning as a PDF file.');
       }
-      const body = createImportBody.safeParse({ ...(parsed as object), termId: effectiveTerm });
-      if (!body.success)
-        throw new Error(
-          `The file does not match the extractor format: ${body.error.issues[0]?.path.join('.')} ${body.error.issues[0]?.message}`,
-        );
-      return api.post<One<ImportBatch>>('/curriculum/imports', body.data);
+      // The server reads the PDF, accepts every row as printed and publishes it.
+      return api.upload<One<ImportBatch>>('/curriculum/imports/pdf', file, 'application/pdf', {
+        termId: effectiveTerm,
+        fileName: file.name,
+      });
     },
     onSuccess: (res) => {
-      void qc.invalidateQueries({ queryKey: ['curriculum'] });
-      navigate(`/h/curriculum/imports/${res.data.id}`);
+      void qc.invalidateQueries();
+      const b = res.data;
+      const topics = b.report.imported ?? 0;
+      const left = b.report.rejected ?? 0;
+      setNotice(
+        (b.scheme?.status === 'PUBLISHED'
+          ? `${b.fileName} is live: ${topics} topics are now on teachers' schemes of work.`
+          : `${b.fileName} is in: ${topics} topics are ready. The headmaster publishes it from the Schemes list.`) +
+          (left ? ` ${left} rows for subjects the system does not teach were left out.` : '') +
+          ' Correct any topic below with Edit.',
+      );
     },
     onError: (e) =>
       setError(e instanceof Error && !('code' in e) ? e.message : fullErrorMessage(e)),
@@ -85,7 +84,7 @@ export function CurriculumPage() {
     <>
       <PageHeader
         title="Curriculum"
-        description="Upload the term's scheme of learning, review the flagged rows, then publish it so teachers can record lessons."
+        description="Upload the term's scheme of learning. Its topics go live for teachers straight away, and you can correct any of them afterwards."
       />
 
       <Section title="Upload the term's scheme of learning" className="mb-5">
@@ -117,7 +116,10 @@ export function CurriculumPage() {
                   <select
                     className="input w-auto"
                     value={effectiveTerm}
-                    onChange={(e) => setTermId(e.target.value)}
+                    onChange={(e) => {
+                      setTermId(e.target.value);
+                      setNotice(null);
+                    }}
                     disabled={upload.isPending}
                   >
                     {terms.data.map((t) => (
@@ -137,6 +139,7 @@ export function CurriculumPage() {
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     setError(null);
+                    setNotice(null);
                     if (f) upload.mutate(f);
                     e.target.value = '';
                   }}
@@ -170,13 +173,10 @@ export function CurriculumPage() {
                     Upload the scheme-of-learning PDF for the term (for example the CEPME file).
                   </li>
                   <li>
-                    Review the flagged rows: approve the cut-off rows in one step, then check the
-                    few others one by one.
+                    Every topic is accepted as printed and goes live at once. Lessons are re-planned
+                    onto its weeks.
                   </li>
-                  <li>
-                    Approve the import, then publish the scheme below. Teachers can then record
-                    lessons.
-                  </li>
+                  <li>Correct any topic that is cut off or misprinted in the Topics list below.</li>
                 </ol>
               )}
             </>
@@ -184,12 +184,18 @@ export function CurriculumPage() {
         </div>
       </Section>
 
+      {notice && (
+        <div className="mb-4">
+          <Alert tone="ok">{notice}</Alert>
+        </div>
+      )}
       {error && (
         <div className="mb-4">
           <Alert>{error}</Alert>
         </div>
       )}
       <div className="space-y-5">
+        {effectiveTerm && <CurriculumTopics termId={effectiveTerm} canEdit={canPublish} />}
         <Section title="Schemes">
           <QueryView query={schemes}>
             {(rows) =>
@@ -230,7 +236,7 @@ export function CurriculumPage() {
               ) : (
                 <EmptyState
                   title="No schemes yet"
-                  description="Upload the extractor output, review it and approve it to create a scheme."
+                  description="Upload the scheme-of-learning PDF above to create one."
                 />
               )
             }
@@ -262,7 +268,7 @@ export function CurriculumPage() {
                       header: '',
                       render: (b) => (
                         <Link to={`/h/curriculum/imports/${b.id}`} className="link text-sm">
-                          Review
+                          Details
                         </Link>
                       ),
                     },
@@ -271,7 +277,7 @@ export function CurriculumPage() {
               ) : (
                 <EmptyState
                   title="No imports yet"
-                  description="Choose the term, then upload the scheme-of-learning PDF. Every row is read from its tables and shown for review before anything reaches teachers."
+                  description="Choose the term, then upload the scheme-of-learning PDF."
                 />
               )
             }
