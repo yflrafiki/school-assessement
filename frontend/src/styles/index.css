@@ -32,6 +32,8 @@ html {
 body {
   @apply bg-canvas text-ink antialiased;
   font-family: var(--font-sans);
+  /* Long emails and curriculum codes wrap instead of widening the page on phones. */
+  overflow-wrap: break-word;
 }
 
 :focus-visible {

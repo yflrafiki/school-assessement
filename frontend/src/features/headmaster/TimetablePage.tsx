@@ -321,42 +321,44 @@ export function TimetablePage() {
                 Their remaining lessons will be re-paced.
               </Alert>
             )}
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Class subject</th>
-                  <th>Per week</th>
-                  <th>New lessons</th>
-                  <th>Shortfall</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.assignments.map((a) => (
-                  <tr key={a.assignmentId}>
-                    <td>
-                      {a.subject} · {a.className}
-                      <span className="block text-xs text-muted">{a.teacher}</span>
-                    </td>
-                    <td className="tabular-nums">
-                      {a.previousPerWeek !== null && a.previousPerWeek !== a.perWeek
-                        ? `${a.previousPerWeek} → ${a.perWeek}`
-                        : a.perWeek}
-                    </td>
-                    <td className="tabular-nums">
-                      {a.lessonsCreated}
-                      {a.lessonsRemoved ? `, ${a.lessonsRemoved} removed` : ''}
-                    </td>
-                    <td className={a.shortfall ? 'text-warn' : 'text-muted'}>
-                      {a.perWeek === 0
-                        ? 'No slots'
-                        : a.shortfall
-                          ? `${a.shortfall} lessons short`
-                          : 'None'}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="table min-w-[28rem]">
+                <thead>
+                  <tr>
+                    <th>Class subject</th>
+                    <th>Per week</th>
+                    <th>New lessons</th>
+                    <th>Shortfall</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {preview.assignments.map((a) => (
+                    <tr key={a.assignmentId}>
+                      <td>
+                        {a.subject} · {a.className}
+                        <span className="block text-xs text-muted">{a.teacher}</span>
+                      </td>
+                      <td className="tabular-nums">
+                        {a.previousPerWeek !== null && a.previousPerWeek !== a.perWeek
+                          ? `${a.previousPerWeek} → ${a.perWeek}`
+                          : a.perWeek}
+                      </td>
+                      <td className="tabular-nums">
+                        {a.lessonsCreated}
+                        {a.lessonsRemoved ? `, ${a.lessonsRemoved} removed` : ''}
+                      </td>
+                      <td className={a.shortfall ? 'text-warn' : 'text-muted'}>
+                        {a.perWeek === 0
+                          ? 'No slots'
+                          : a.shortfall
+                            ? `${a.shortfall} lessons short`
+                            : 'None'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Drawer>

@@ -424,48 +424,50 @@ function WeeksTab() {
         9 mock week. Week 1 normally starts on the first Monday of term.
       </p>
       {rows.length ? (
-        <table className="table mt-2">
-          <thead>
-            <tr>
-              <th>Week</th>
-              <th>Starts</th>
-              <th>Ends</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((w, i) => (
-              <tr key={w.weekNumber}>
-                <td>Week {w.weekNumber}</td>
-                <td>
-                  <input
-                    type="date"
-                    className="input w-auto"
-                    value={w.startDate}
-                    aria-label={`Week ${w.weekNumber} start`}
-                    onChange={(e) =>
-                      setDraft(
-                        rows.map((r, j) => (j === i ? { ...r, startDate: e.target.value } : r)),
-                      )
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    type="date"
-                    className="input w-auto"
-                    value={w.endDate}
-                    aria-label={`Week ${w.weekNumber} end`}
-                    onChange={(e) =>
-                      setDraft(
-                        rows.map((r, j) => (j === i ? { ...r, endDate: e.target.value } : r)),
-                      )
-                    }
-                  />
-                </td>
+        <div className="overflow-x-auto mt-2">
+          <table className="table min-w-[28rem]">
+            <thead>
+              <tr>
+                <th>Week</th>
+                <th>Starts</th>
+                <th>Ends</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((w, i) => (
+                <tr key={w.weekNumber}>
+                  <td>Week {w.weekNumber}</td>
+                  <td>
+                    <input
+                      type="date"
+                      className="input w-auto"
+                      value={w.startDate}
+                      aria-label={`Week ${w.weekNumber} start`}
+                      onChange={(e) =>
+                        setDraft(
+                          rows.map((r, j) => (j === i ? { ...r, startDate: e.target.value } : r)),
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      className="input w-auto"
+                      value={w.endDate}
+                      aria-label={`Week ${w.weekNumber} end`}
+                      onChange={(e) =>
+                        setDraft(
+                          rows.map((r, j) => (j === i ? { ...r, endDate: e.target.value } : r)),
+                        )
+                      }
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <EmptyState
           title="No weeks set"

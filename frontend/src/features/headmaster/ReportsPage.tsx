@@ -114,38 +114,43 @@ export function ReportsPage() {
           <QueryView query={weekly}>
             {(r) =>
               r.weeks.some((w) => w.assignmentsWithLessons) ? (
-                <table className="table">
-                  <caption className="sr-only">Weekly completion</caption>
-                  <thead>
-                    <tr>
-                      <th>Week</th>
-                      <th>Class subjects with lessons</th>
-                      <th>Complete</th>
-                      <th>Rate</th>
-                      <th className="w-1/3">
-                        <span className="sr-only">Bar</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {r.weeks.map((w) => (
-                      <tr key={w.weekNumber}>
-                        <td>Week {w.weekNumber}</td>
-                        <td className="tabular-nums">{w.assignmentsWithLessons}</td>
-                        <td className="tabular-nums">{w.assignmentsComplete}</td>
-                        <td className="tabular-nums">{percent(w.rate)}</td>
-                        <td>
-                          <span className="block h-2 overflow-hidden rounded bg-canvas" aria-hidden>
-                            <span
-                              className="block h-full bg-accent"
-                              style={{ width: `${(w.rate ?? 0) * 100}%` }}
-                            />
-                          </span>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="table min-w-[28rem]">
+                    <caption className="sr-only">Weekly completion</caption>
+                    <thead>
+                      <tr>
+                        <th>Week</th>
+                        <th>Class subjects with lessons</th>
+                        <th>Complete</th>
+                        <th>Rate</th>
+                        <th className="w-1/3">
+                          <span className="sr-only">Bar</span>
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {r.weeks.map((w) => (
+                        <tr key={w.weekNumber}>
+                          <td>Week {w.weekNumber}</td>
+                          <td className="tabular-nums">{w.assignmentsWithLessons}</td>
+                          <td className="tabular-nums">{w.assignmentsComplete}</td>
+                          <td className="tabular-nums">{percent(w.rate)}</td>
+                          <td>
+                            <span
+                              className="block h-2 overflow-hidden rounded bg-canvas"
+                              aria-hidden
+                            >
+                              <span
+                                className="block h-full bg-accent"
+                                style={{ width: `${(w.rate ?? 0) * 100}%` }}
+                              />
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <EmptyState
                   title="No lessons to measure yet"
