@@ -8,6 +8,7 @@ import { PASSWORD_MIN_LENGTH, forgotPasswordBody, loginBody, newPassword } from 
 import { api, setSessionToken, type One } from '../../lib/api';
 import { applyServerErrors, errorMessage } from '../../lib/forms';
 import { FormField } from '../../components/FormField';
+import { PasswordInput } from '../../components/PasswordInput';
 import { Alert, LoadingState } from '../../components/States';
 import { PublicLayout } from '../../app/AppShell';
 import { fetchMe, meKey, useMe } from './useMe';
@@ -79,12 +80,7 @@ export function LoginPage() {
           />
         </FormField>
         <FormField label="Password" error={form.formState.errors.password?.message}>
-          <input
-            className="input"
-            type="password"
-            autoComplete="current-password"
-            {...form.register('password')}
-          />
+          <PasswordInput autoComplete="current-password" {...form.register('password')} />
         </FormField>
         {formError && <Alert>{formError}</Alert>}
         <button type="submit" className="btn-primary w-full" disabled={login.isPending}>
@@ -197,20 +193,10 @@ export function ActivatePage() {
           hint={`At least ${PASSWORD_MIN_LENGTH} characters. A short phrase works well.`}
           error={form.formState.errors.password?.message}
         >
-          <input
-            className="input"
-            type="password"
-            autoComplete="new-password"
-            {...form.register('password')}
-          />
+          <PasswordInput autoComplete="new-password" {...form.register('password')} />
         </FormField>
         <FormField label="Confirm password" error={form.formState.errors.confirm?.message}>
-          <input
-            className="input"
-            type="password"
-            autoComplete="new-password"
-            {...form.register('confirm')}
-          />
+          <PasswordInput autoComplete="new-password" {...form.register('confirm')} />
         </FormField>
         {formError && <Alert>{formError}</Alert>}
         <button type="submit" className="btn-primary w-full" disabled={accept.isPending}>
@@ -332,20 +318,10 @@ export function ResetPasswordPage() {
             hint={`At least ${PASSWORD_MIN_LENGTH} characters`}
             error={form.formState.errors.password?.message}
           >
-            <input
-              className="input"
-              type="password"
-              autoComplete="new-password"
-              {...form.register('password')}
-            />
+            <PasswordInput autoComplete="new-password" {...form.register('password')} />
           </FormField>
           <FormField label="Confirm password" error={form.formState.errors.confirm?.message}>
-            <input
-              className="input"
-              type="password"
-              autoComplete="new-password"
-              {...form.register('confirm')}
-            />
+            <PasswordInput autoComplete="new-password" {...form.register('confirm')} />
           </FormField>
           {formError && (
             <Alert>

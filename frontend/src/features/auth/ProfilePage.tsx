@@ -8,6 +8,7 @@ import { api } from '../../lib/api';
 import { applyServerErrors } from '../../lib/forms';
 import { PageHeader, Section } from '../../components/PageHeader';
 import { FormField } from '../../components/FormField';
+import { PasswordInput } from '../../components/PasswordInput';
 import { Alert } from '../../components/States';
 import { useCurrentUser } from './useMe';
 
@@ -86,9 +87,7 @@ export function ProfilePage() {
             })}
           >
             <FormField label="Current password" error={e.currentPassword?.message}>
-              <input
-                className="input"
-                type="password"
+              <PasswordInput
                 autoComplete="current-password"
                 {...form.register('currentPassword')}
               />
@@ -98,20 +97,10 @@ export function ProfilePage() {
               hint={`At least ${PASSWORD_MIN_LENGTH} characters`}
               error={e.newPassword?.message}
             >
-              <input
-                className="input"
-                type="password"
-                autoComplete="new-password"
-                {...form.register('newPassword')}
-              />
+              <PasswordInput autoComplete="new-password" {...form.register('newPassword')} />
             </FormField>
             <FormField label="Confirm new password" error={e.confirm?.message}>
-              <input
-                className="input"
-                type="password"
-                autoComplete="new-password"
-                {...form.register('confirm')}
-              />
+              <PasswordInput autoComplete="new-password" {...form.register('confirm')} />
             </FormField>
             {formError && <Alert>{formError}</Alert>}
             {done && (
