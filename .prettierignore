@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+dist
+coverage
+backend/src/generated
+backend/prisma/migrations
+tools/curriculum-extract/output

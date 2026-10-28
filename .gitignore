@@ -1,0 +1,36 @@
+# Secrets: never commit. Only the *.example templates are tracked.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Database dumps and backups (may contain personal data)
+*.sql.gz
+*.dump
+*.backup
+backups/
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+backend/src/generated/
+
+# Curriculum extractor working files
+tools/curriculum-extract/output/
+tools/curriculum-extract/pages/
+
+# Test reports
+playwright-report/
+test-results/
+
+# Logs, editor and OS files
+*.log
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

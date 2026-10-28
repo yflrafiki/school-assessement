@@ -1,0 +1,694 @@
+// Teacher Assessment and Weekly Teaching Monitoring System.
+// Constraints Prisma cannot express (partial unique indexes, exclusion constraints, CHECKs,
+// trigram indexes) live in hand-written SQL inside the migrations folder.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  TEACHER
+  HEADMASTER
+  SCHOOL_ADMIN
+}
+
+enum UserStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  DEACTIVATED
+}
+
+enum AuthTokenType {
+  INVITATION
+  PASSWORD_RESET
+}
+
+enum EmailTemplate {
+  INVITATION
+  PASSWORD_RESET
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum Level {
+  BASIC_7
+  BASIC_8
+  BASIC_9
+}
+
+enum CalendarDayKind {
+  HOLIDAY
+  CLOSURE
+}
+
+enum WeekKind {
+  TEACHING
+  REVISION
+  MOCK
+  EXAMINATION
+}
+
+enum LessonStatus {
+  SCHEDULED
+  CANCELLED
+  RESCHEDULED
+  WAIVED
+}
+
+enum CancelReason {
+  HOLIDAY
+  SPECIAL_WEEK
+  ABSENCE
+  SCHOOL_CANCELLATION
+}
+
+enum RecordStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum SchemeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ImportStatus {
+  STAGED
+  IMPORTED
+  DISCARDED
+}
+
+enum ImportRowDecision {
+  PENDING
+  APPROVED
+  CORRECTED
+  REJECTED
+}
+
+enum NotificationType {
+  RECORD_SUBMITTED
+  EMAIL_QUOTA_WARNING
+}
+
+model School {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  timezone  String   @default("Africa/Accra")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  users             User[]
+  teacherProfiles   TeacherProfile[]
+  subjects          Subject[]
+  academicYears     AcademicYear[]
+  terms             Term[]
+  termWeeks         TermWeek[]
+  classes           SchoolClass[]
+  assignments       TeachingAssignment[]
+  calendarDays      SchoolCalendarDay[]
+  weekPolicies      WeekPolicy[]
+  timetableEntries  TimetableEntry[]
+  lessons           Lesson[]
+  absences          Absence[]
+  curriculumSchemes CurriculumScheme[]
+  curriculumEntries CurriculumEntry[]
+  importBatches     ImportBatch[]
+  teachingRecords   TeachingRecord[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  emailOutbox       EmailOutbox[]
+
+  @@map("schools")
+}
+
+model User {
+  id                String     @id @default(uuid()) @db.Uuid
+  schoolId          String     @map("school_id") @db.Uuid
+  email             String     @unique
+  fullName          String     @map("full_name")
+  role              Role
+  status            UserStatus @default(PENDING_ACTIVATION)
+  passwordHash      String?    @map("password_hash")
+  passwordChangedAt DateTime?  @map("password_changed_at") @db.Timestamptz(3)
+  failedLoginCount  Int        @default(0) @map("failed_login_count")
+  lockedUntil       DateTime?  @map("locked_until") @db.Timestamptz(3)
+  lastLoginAt       DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherProfile TeacherProfile?
+  sessions       Session[]
+  authTokens     AuthToken[]     @relation("TokenOwner")
+  issuedTokens   AuthToken[]     @relation("TokenIssuer")
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+
+  lessonDecisions    Lesson[]           @relation("LessonDecidedBy")
+  absencesApproved   Absence[]          @relation("AbsenceApprovedBy")
+  absencesRevoked    Absence[]          @relation("AbsenceRevokedBy")
+  calendarDays       SchoolCalendarDay[]
+  weekPolicies       WeekPolicy[]
+  importBatches      ImportBatch[]
+  importRowReviews   ImportRow[]
+  schemesPublished   CurriculumScheme[]
+
+  @@index([schoolId, role, status])
+  @@index([fullName(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_full_name_trgm")
+  @@index([email(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_email_trgm")
+  @@map("users")
+}
+
+model TeacherProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  staffId   String   @map("staff_id")
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school           School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments      TeachingAssignment[]
+  timetableEntries TimetableEntry[]
+  absences         Absence[]
+  teachingRecords  TeachingRecord[]
+
+  @@unique([schoolId, staffId])
+  @@index([staffId(ops: raw("gin_trgm_ops"))], type: Gin, map: "teacher_profiles_staff_id_trgm")
+  @@map("teacher_profiles")
+}
+
+model Session {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  tokenHash     String    @unique @map("token_hash")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt    DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(3)
+  ipAddress     String?   @map("ip_address")
+  userAgent     String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model AuthToken {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  type           AuthTokenType
+  tokenHash      String        @unique @map("token_hash")
+  expiresAt      DateTime      @map("expires_at") @db.Timestamptz(3)
+  consumedAt     DateTime?     @map("consumed_at") @db.Timestamptz(3)
+  revokedAt      DateTime?     @map("revoked_at") @db.Timestamptz(3)
+  failedAttempts Int           @default(0) @map("failed_attempts")
+  createdById    String?       @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user      User  @relation("TokenOwner", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("TokenIssuer", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId, type])
+  @@map("auth_tokens")
+}
+
+model EmailOutbox {
+  id          String        @id @default(uuid()) @db.Uuid
+  schoolId    String?       @map("school_id") @db.Uuid
+  toEmail     String        @map("to_email")
+  template    EmailTemplate
+  /// Template variables. Cleared after sending because the link carries a token.
+  payload     Json
+  status      EmailStatus   @default(PENDING)
+  attempts    Int           @default(0)
+  lastError   String?       @map("last_error")
+  availableAt DateTime      @default(now()) @map("available_at") @db.Timestamptz(3)
+  sentAt      DateTime?     @map("sent_at") @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school School? @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@index([status, availableAt])
+  @@map("email_outbox")
+}
+
+/// National catalogue subjects have schoolId = null. Schools add language subjects
+/// whose parentSubjectId points to the generic Ghanaian Language subject.
+model Subject {
+  id              String   @id @default(uuid()) @db.Uuid
+  schoolId        String?  @map("school_id") @db.Uuid
+  name            String
+  code            String
+  parentSubjectId String?  @map("parent_subject_id") @db.Uuid
+  /// The generic framework subject (Ghanaian Language). Teachers are assigned to its language variants.
+  isFramework     Boolean  @default(false) @map("is_framework")
+  sortOrder       Int      @default(0) @map("sort_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school            School?              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  parent            Subject?             @relation("SubjectVariants", fields: [parentSubjectId], references: [id], onDelete: Restrict)
+  variants          Subject[]            @relation("SubjectVariants")
+  assignments       TeachingAssignment[]
+  curriculumEntries CurriculumEntry[]
+
+  @@index([schoolId])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "subjects_name_trgm")
+  @@map("subjects")
+}
+
+model AcademicYear {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  name      String
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  terms  Term[]
+
+  @@unique([schoolId, name])
+  @@map("academic_years")
+}
+
+model Term {
+  id             String   @id @default(uuid()) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  number         Int
+  name           String
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  isCurrent      Boolean  @default(false) @map("is_current")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school            School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear      AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  weeks             TermWeek[]
+  assignments       TeachingAssignment[]
+  weekPolicies      WeekPolicy[]
+  curriculumSchemes CurriculumScheme[]
+  importBatches     ImportBatch[]
+
+  @@unique([academicYearId, number])
+  @@index([schoolId])
+  @@map("terms")
+}
+
+model TermWeek {
+  id         String   @id @default(uuid()) @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  termId     String   @map("term_id") @db.Uuid
+  weekNumber Int      @map("week_number")
+  startDate  DateTime @map("start_date") @db.Date
+  endDate    DateTime @map("end_date") @db.Date
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  term   Term   @relation(fields: [termId], references: [id], onDelete: Restrict)
+
+  @@unique([termId, weekNumber])
+  @@map("term_weeks")
+}
+
+model SchoolClass {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  level     Level
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school           School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  assignments      TeachingAssignment[]
+  weekPolicies     WeekPolicy[]
+  timetableEntries TimetableEntry[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, level])
+  @@map("school_classes")
+}
+
+model TeachingAssignment {
+  id               String   @id @default(uuid()) @db.Uuid
+  schoolId         String   @map("school_id") @db.Uuid
+  termId           String   @map("term_id") @db.Uuid
+  teacherProfileId String   @map("teacher_profile_id") @db.Uuid
+  subjectId        String   @map("subject_id") @db.Uuid
+  classId          String   @map("class_id") @db.Uuid
+  isActive         Boolean  @default(true) @map("is_active")
+  /// Weekly lesson count used at the last timetable publish. Null until first published.
+  pacedPerWeek     Int?     @map("paced_per_week")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school           School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  term             Term             @relation(fields: [termId], references: [id], onDelete: Restrict)
+  teacherProfile   TeacherProfile   @relation(fields: [teacherProfileId], references: [id], onDelete: Restrict)
+  subject          Subject          @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  schoolClass      SchoolClass      @relation(fields: [classId], references: [id], onDelete: Restrict)
+  timetableEntries TimetableEntry[]
+  lessons          Lesson[]
+  teachingRecords  TeachingRecord[]
+
+  @@unique([classId, subjectId, termId])
+  @@index([schoolId, termId])
+  @@index([teacherProfileId, termId])
+  @@map("teaching_assignments")
+}
+
+model SchoolCalendarDay {
+  id          String          @id @default(uuid()) @db.Uuid
+  schoolId    String          @map("school_id") @db.Uuid
+  date        DateTime        @db.Date
+  kind        CalendarDayKind
+  description String
+  createdById String          @map("created_by_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, date])
+  @@map("school_calendar_days")
+}
+
+/// Overrides the scheme's week kind for one term week, either for a whole level or one class.
+/// Exactly one of level or classId is set (CHECK constraint in SQL).
+model WeekPolicy {
+  id          String    @id @default(uuid()) @db.Uuid
+  schoolId    String    @map("school_id") @db.Uuid
+  termId      String    @map("term_id") @db.Uuid
+  weekNumber  Int       @map("week_number")
+  level       Level?
+  classId     String?   @map("class_id") @db.Uuid
+  kind        WeekKind
+  note        String?
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  term        Term         @relation(fields: [termId], references: [id], onDelete: Restrict)
+  schoolClass SchoolClass? @relation(fields: [classId], references: [id], onDelete: Restrict)
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([termId, weekNumber])
+  @@map("week_policies")
+}
+
+/// Weekly repeating slot. teacherProfileId and classId are copied from the assignment
+/// so the exclusion constraints can prevent overlaps.
+model TimetableEntry {
+  id               String    @id @default(uuid()) @db.Uuid
+  schoolId         String    @map("school_id") @db.Uuid
+  assignmentId     String    @map("assignment_id") @db.Uuid
+  teacherProfileId String    @map("teacher_profile_id") @db.Uuid
+  classId          String    @map("class_id") @db.Uuid
+  weekday          Int
+  startMinute      Int       @map("start_minute")
+  endMinute        Int       @map("end_minute")
+  validFrom        DateTime  @map("valid_from") @db.Date
+  validTo          DateTime  @map("valid_to") @db.Date
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school         School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  assignment     TeachingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  teacherProfile TeacherProfile     @relation(fields: [teacherProfileId], references: [id], onDelete: Restrict)
+  schoolClass    SchoolClass        @relation(fields: [classId], references: [id], onDelete: Restrict)
+  lessons        Lesson[]
+
+  @@index([assignmentId])
+  @@index([schoolId, weekday])
+  @@map("timetable_entries")
+}
+
+model Lesson {
+  id                String        @id @default(uuid()) @db.Uuid
+  schoolId          String        @map("school_id") @db.Uuid
+  assignmentId      String        @map("assignment_id") @db.Uuid
+  timetableEntryId  String?       @map("timetable_entry_id") @db.Uuid
+  date              DateTime      @db.Date
+  startMinute       Int           @map("start_minute")
+  endMinute         Int           @map("end_minute")
+  status            LessonStatus  @default(SCHEDULED)
+  cancelReason      CancelReason? @map("cancel_reason")
+  reason            String?
+  decidedById       String?       @map("decided_by_id") @db.Uuid
+  decidedAt         DateTime?     @map("decided_at") @db.Timestamptz(3)
+  rescheduledFromId String?       @unique @map("rescheduled_from_id") @db.Uuid
+  /// Curriculum week this lesson is paced onto. Null when beyond the scheme.
+  weekNumber        Int?          @map("week_number")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school          School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  assignment      TeachingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  timetableEntry  TimetableEntry?    @relation(fields: [timetableEntryId], references: [id], onDelete: Restrict)
+  decidedBy       User?              @relation("LessonDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  rescheduledFrom Lesson?            @relation("LessonReschedule", fields: [rescheduledFromId], references: [id], onDelete: Restrict)
+  rescheduledTo   Lesson?            @relation("LessonReschedule")
+  record          TeachingRecord?
+
+  @@unique([assignmentId, date, startMinute])
+  @@index([schoolId, date])
+  @@index([assignmentId, weekNumber])
+  @@map("lessons")
+}
+
+model Absence {
+  id               String    @id @default(uuid()) @db.Uuid
+  schoolId         String    @map("school_id") @db.Uuid
+  teacherProfileId String    @map("teacher_profile_id") @db.Uuid
+  startDate        DateTime  @map("start_date") @db.Date
+  endDate          DateTime  @map("end_date") @db.Date
+  reason           String
+  approvedById     String    @map("approved_by_id") @db.Uuid
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedById      String?   @map("revoked_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school         School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherProfile TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Restrict)
+  approvedBy     User           @relation("AbsenceApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  revokedBy      User?          @relation("AbsenceRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([teacherProfileId, startDate])
+  @@map("absences")
+}
+
+model CurriculumScheme {
+  id            String       @id @default(uuid()) @db.Uuid
+  schoolId      String       @map("school_id") @db.Uuid
+  termId        String       @map("term_id") @db.Uuid
+  version       Int
+  title         String
+  status        SchemeStatus @default(DRAFT)
+  importBatchId String?      @unique @map("import_batch_id") @db.Uuid
+  publishedAt   DateTime?    @map("published_at") @db.Timestamptz(3)
+  publishedById String?      @map("published_by_id") @db.Uuid
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school      School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  term        Term              @relation(fields: [termId], references: [id], onDelete: Restrict)
+  importBatch ImportBatch?      @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  publishedBy User?             @relation(fields: [publishedById], references: [id], onDelete: Restrict)
+  weeks       CurriculumWeek[]
+  entries     CurriculumEntry[]
+
+  @@unique([termId, version])
+  @@map("curriculum_schemes")
+}
+
+model CurriculumWeek {
+  id         String   @id @default(uuid()) @db.Uuid
+  schemeId   String   @map("scheme_id") @db.Uuid
+  level      Level
+  weekNumber Int      @map("week_number")
+  kind       WeekKind
+  label      String?
+
+  scheme CurriculumScheme @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+
+  @@unique([schemeId, level, weekNumber])
+  @@map("curriculum_weeks")
+}
+
+model CurriculumEntry {
+  id              String    @id @default(uuid()) @db.Uuid
+  schoolId        String    @map("school_id") @db.Uuid
+  schemeId        String    @map("scheme_id") @db.Uuid
+  level           Level
+  subjectId       String    @map("subject_id") @db.Uuid
+  weekNumber      Int       @map("week_number")
+  strand          String
+  subStrand       String    @map("sub_strand")
+  contentStandard String    @map("content_standard")
+  indicator       String
+  isTruncated     Boolean   @default(false) @map("is_truncated")
+  sourcePage      Int       @map("source_page")
+  naturalKey      String    @map("natural_key")
+  sortOrder       Int       @default(0) @map("sort_order")
+  retiredAt       DateTime? @map("retired_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school  School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  scheme  CurriculumScheme      @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+  subject Subject               @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  topics  TeachingRecordTopic[]
+
+  @@unique([schemeId, naturalKey])
+  @@index([schemeId, level, subjectId, weekNumber])
+  @@map("curriculum_entries")
+}
+
+model ImportBatch {
+  id          String       @id @default(uuid()) @db.Uuid
+  schoolId    String       @map("school_id") @db.Uuid
+  termId      String       @map("term_id") @db.Uuid
+  fileName    String       @map("file_name")
+  checksum    String
+  status      ImportStatus @default(STAGED)
+  /// Extractor notes plus the final import report (counts, decisions).
+  report      Json         @default("{}")
+  weeks       Json         @default("[]")
+  createdById String       @map("created_by_id") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  importedAt  DateTime?    @map("imported_at") @db.Timestamptz(3)
+
+  school    School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  term      Term              @relation(fields: [termId], references: [id], onDelete: Restrict)
+  createdBy User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  rows      ImportRow[]
+  scheme    CurriculumScheme?
+
+  @@unique([schoolId, termId, checksum])
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id              String            @id @default(uuid()) @db.Uuid
+  batchId         String            @map("batch_id") @db.Uuid
+  rowIndex        Int               @map("row_index")
+  level           Level
+  subjectName     String            @map("subject_name")
+  weekNumber      Int               @map("week_number")
+  strand          String
+  subStrand       String            @map("sub_strand")
+  contentStandard String            @map("content_standard")
+  indicator       String
+  sourcePage      Int               @map("source_page")
+  flags           String[]
+  decision        ImportRowDecision @default(PENDING)
+  corrected       Json?
+  reviewNote      String?           @map("review_note")
+  reviewedById    String?           @map("reviewed_by_id") @db.Uuid
+  reviewedAt      DateTime?         @map("reviewed_at") @db.Timestamptz(3)
+
+  batch      ImportBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  reviewedBy User?       @relation(fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, rowIndex])
+  @@map("import_rows")
+}
+
+model TeachingRecord {
+  id               String       @id @default(uuid()) @db.Uuid
+  schoolId         String       @map("school_id") @db.Uuid
+  lessonId         String       @unique @map("lesson_id") @db.Uuid
+  assignmentId     String       @map("assignment_id") @db.Uuid
+  teacherProfileId String       @map("teacher_profile_id") @db.Uuid
+  weekNumber       Int          @map("week_number")
+  status           RecordStatus
+  taughtSummary    String       @map("taught_summary")
+  topicNote        String?      @map("topic_note")
+  outcomes         String?
+  challenges       String?
+  remarks          String?
+  isLate           Boolean      @default(false) @map("is_late")
+  submittedAt      DateTime?    @map("submitted_at") @db.Timestamptz(3)
+  lastEditedAt     DateTime?    @map("last_edited_at") @db.Timestamptz(3)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  school         School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  lesson         Lesson                @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  assignment     TeachingAssignment    @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  teacherProfile TeacherProfile        @relation(fields: [teacherProfileId], references: [id], onDelete: Restrict)
+  topics         TeachingRecordTopic[]
+  notifications  Notification[]
+
+  @@index([schoolId, status, submittedAt])
+  @@index([teacherProfileId, weekNumber])
+  @@map("teaching_records")
+}
+
+model TeachingRecordTopic {
+  recordId String @map("record_id") @db.Uuid
+  entryId  String @map("entry_id") @db.Uuid
+
+  record TeachingRecord  @relation(fields: [recordId], references: [id], onDelete: Restrict)
+  entry  CurriculumEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+
+  @@id([recordId, entryId])
+  @@map("teaching_record_topics")
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  schoolId    String           @map("school_id") @db.Uuid
+  recipientId String           @map("recipient_id") @db.Uuid
+  type        NotificationType
+  recordId    String?          @map("record_id") @db.Uuid
+  title       String
+  body        String
+  readAt      DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school    School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  recipient User            @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  record    TeachingRecord? @relation(fields: [recordId], references: [id], onDelete: Restrict)
+
+  @@unique([recipientId, type, recordId])
+  @@index([recipientId, createdAt(sort: Desc), id])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  schoolId   String?  @map("school_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json     @default("{}")
+  requestId  String?  @map("request_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  school School? @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  actor  User?   @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

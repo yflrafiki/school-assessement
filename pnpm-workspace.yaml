@@ -1,0 +1,9 @@
+packages:
+  - backend
+  - frontend
+  - packages/*
+
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - prisma
+  - esbuild
