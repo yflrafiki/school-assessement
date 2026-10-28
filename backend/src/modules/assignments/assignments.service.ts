@@ -277,3 +277,39 @@ export async function carryForward(actor: Actor, fromTermId: string, toTermId: s
     return { created, skipped: source.length - created };
   });
 }
+
+/**
+ * Removes an assignment with its timetable slots and lessons. Refused once a teacher has
+ * written a lesson record for it: records are the school's evidence and are never deleted.
+ * Ending the assignment (isActive: false) keeps everything instead.
+ */
+export async function deleteAssignment(actor: Actor, id: string) {
+  await prisma.$transaction(async (tx) => {
+    const locked = await lockAssignment(tx, actor.schoolId, id);
+    if (!locked) throw notFound('Assignment');
+    await removeAssignmentData(tx, id);
+    await audit(tx, {
+      schoolId: actor.schoolId,
+      actorId: actor.userId,
+      action: 'assignment.deleted',
+      entityType: 'TeachingAssignment',
+      entityId: id,
+      requestId: actor.requestId,
+    });
+  });
+}
+
+export async function removeAssignmentData(tx: Tx, id: string) {
+  const records = await tx.teachingRecord.count({ where: { assignmentId: id } });
+  if (records) {
+    throw new AppError(
+      'CONFLICT',
+      `${records} lesson record${records === 1 ? ' has' : 's have'} been written for this class subject, so it cannot be deleted. End it instead; the records are kept.`,
+      { records },
+    );
+  }
+  await tx.lesson.updateMany({ where: { assignmentId: id }, data: { rescheduledFromId: null } });
+  await tx.lesson.deleteMany({ where: { assignmentId: id } });
+  await tx.timetableEntry.deleteMany({ where: { assignmentId: id } });
+  await tx.teachingAssignment.delete({ where: { id } });
+}

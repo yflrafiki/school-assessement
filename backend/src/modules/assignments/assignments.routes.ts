@@ -45,6 +45,15 @@ assignmentsRouter.patch('/assignments/:id', requirePermission('school.setup'), a
   });
 });
 
+assignmentsRouter.delete(
+  '/assignments/:id',
+  requirePermission('school.setup'),
+  async (req, res) => {
+    await service.deleteAssignment(actor(req), idParam(req));
+    res.status(204).end();
+  },
+);
+
 assignmentsRouter.post(
   '/assignments/carry-forward',
   requirePermission('school.setup'),

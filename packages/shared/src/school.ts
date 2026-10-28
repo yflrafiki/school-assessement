@@ -29,6 +29,13 @@ export const createTermBody = z
   })
   .refine(endAfterStart, endAfterStartIssue);
 
+export const updateAcademicYearBody = z.object({
+  name: z
+    .string()
+    .trim()
+    .regex(/^\d{4}\/\d{4}$/, 'Use the form 2026/2027'),
+});
+
 export const updateTermBody = z.object({
   name: trimmed(1, 60).optional(),
   isCurrent: z.boolean().optional(),

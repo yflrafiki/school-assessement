@@ -37,6 +37,7 @@ export function AssignmentsPage() {
   const [reassign, setReassign] = useState<Assignment | null>(null);
   const [newTeacher, setNewTeacher] = useState('');
   const [carry, setCarry] = useState(false);
+  const [removing, setRemoving] = useState<Assignment | null>(null);
   const [carryFrom, setCarryFrom] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -259,6 +260,13 @@ export function AssignmentsPage() {
                           >
                             {a.isActive ? 'Deactivate' : 'Activate'}
                           </button>
+                          <button
+                            type="button"
+                            className="btn-ghost h-7 px-2 text-xs text-bad"
+                            onClick={() => setRemoving(a)}
+                          >
+                            Delete
+                          </button>
                         </span>
                       ),
                     },
@@ -309,6 +317,23 @@ export function AssignmentsPage() {
           </select>
         </label>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!removing}
+        danger
+        title="Delete this class subject?"
+        body={
+          removing
+            ? `${removing.subject.name} for ${removing.schoolClass.name} (${removing.teacher.fullName}) is removed with its timetable slots and lessons. This is only possible while no lesson record has been written for it; otherwise deactivate it.`
+            : ''
+        }
+        confirmLabel="Delete"
+        onClose={() => setRemoving(null)}
+        onConfirm={async () => {
+          await api.delete(`/assignments/${removing?.id}`);
+          refresh();
+        }}
+      />
 
       <ConfirmDialog
         open={carry}

@@ -1,13 +1,13 @@
 import { useId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FiEdit2 } from 'react-icons/fi';
+import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { api, type One } from '../../lib/api';
 import { levelLabel } from '../../lib/format';
 import { fullErrorMessage } from '../../lib/forms';
 import { Section } from '../../components/PageHeader';
 import { FilterBar, FilterSelect } from '../../components/Filters';
 import { Alert, EmptyState, QueryView } from '../../components/States';
-import { Drawer } from '../../components/Overlays';
+import { ConfirmDialog, Drawer } from '../../components/Overlays';
 import { TopicText } from '../curriculum/TopicText';
 import { levelOptions, subjectOptions, useSubjects, weekOptions } from '../reference';
 import type { CurriculumEntry } from '../../types/api';
@@ -19,6 +19,8 @@ export function CurriculumTopics({ termId, canEdit }: { termId: string; canEdit:
   const [subjectId, setSubjectId] = useState('');
   const [week, setWeek] = useState('1');
   const [editing, setEditing] = useState<CurriculumEntry | null>(null);
+  const [removing, setRemoving] = useState<CurriculumEntry | null>(null);
+  const qc = useQueryClient();
   const subjectName = new Map((subjects.data ?? []).map((s) => [s.id, s.name]));
 
   const topics = useQuery({
@@ -66,13 +68,22 @@ export function CurriculumTopics({ termId, canEdit }: { termId: string; canEdit:
                     <TopicText entry={e} />
                   </div>
                   {canEdit && (
-                    <button
-                      type="button"
-                      className="btn-secondary h-8 shrink-0 text-xs"
-                      onClick={() => setEditing(e)}
-                    >
-                      <FiEdit2 aria-hidden /> Edit
-                    </button>
+                    <span className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                      <button
+                        type="button"
+                        className="btn-secondary h-8 text-xs"
+                        onClick={() => setEditing(e)}
+                      >
+                        <FiEdit2 aria-hidden /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-danger h-8 text-xs"
+                        onClick={() => setRemoving(e)}
+                      >
+                        <FiTrash2 aria-hidden /> Delete
+                      </button>
+                    </span>
                   )}
                 </li>
               ))}
@@ -86,6 +97,18 @@ export function CurriculumTopics({ termId, canEdit }: { termId: string; canEdit:
         }
       </QueryView>
       <EditTopic entry={editing} onClose={() => setEditing(null)} />
+      <ConfirmDialog
+        open={!!removing}
+        danger
+        title="Delete this topic?"
+        body={`"${removing?.indicator ?? ''}" is taken off the scheme of work for week ${removing?.weekNumber ?? ''}. A topic that lessons have been recorded against cannot be deleted; edit its wording instead.`}
+        confirmLabel="Delete"
+        onClose={() => setRemoving(null)}
+        onConfirm={async () => {
+          await api.delete(`/curriculum/entries/${removing?.id}`);
+          void qc.invalidateQueries({ queryKey: ['curriculum'] });
+        }}
+      />
     </Section>
   );
 }

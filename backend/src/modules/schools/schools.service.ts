@@ -11,7 +11,7 @@ import type {
   WeekPolicyBody,
 } from '@school/shared';
 import { prisma } from '../../lib/db.js';
-import { AppError, isUniqueViolation, notFound, validation } from '../../lib/errors.js';
+import { AppError, conflict, isUniqueViolation, notFound, validation } from '../../lib/errors.js';
 import { fromDbDate, toDbDate } from '../../lib/dates.js';
 import { audit } from '../../lib/audit.js';
 import { syncSchoolAssignments } from '../lessons/lessons.service.js';
@@ -102,6 +102,88 @@ export async function createAcademicYear(
     if (isUniqueViolation(err)) throw validation({ name: ['This academic year already exists'] });
     throw err;
   }
+}
+
+export async function renameAcademicYear(actor: Actor, id: string, name: string) {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const year = await tx.academicYear.findFirst({ where: { id, schoolId: actor.schoolId } });
+      if (!year) throw notFound('Academic year');
+      await tx.academicYear.update({ where: { id }, data: { name } });
+      await audit(tx, {
+        ...auditFor(actor),
+        action: 'academic_year.renamed',
+        entityType: 'AcademicYear',
+        entityId: id,
+        metadata: { from: year.name, to: name },
+      });
+      return { id, name };
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) throw validation({ name: ['This academic year already exists'] });
+    throw err;
+  }
+}
+
+/** Only an empty year can go: delete its terms first. */
+export async function deleteAcademicYear(actor: Actor, id: string) {
+  await prisma.$transaction(async (tx) => {
+    const year = await tx.academicYear.findFirst({
+      where: { id, schoolId: actor.schoolId },
+      include: { _count: { select: { terms: true } } },
+    });
+    if (!year) throw notFound('Academic year');
+    if (year._count.terms) throw conflict('Delete the terms of this academic year first');
+    await tx.academicYear.delete({ where: { id } });
+    await audit(tx, {
+      ...auditFor(actor),
+      action: 'academic_year.deleted',
+      entityType: 'AcademicYear',
+      entityId: id,
+      metadata: { name: year.name },
+    });
+  });
+}
+
+/**
+ * A term can be deleted while nothing hangs off it yet: no class subjects assigned and no
+ * scheme of learning uploaded. Its week dates and special weeks go with it.
+ */
+export async function deleteTerm(actor: Actor, id: string) {
+  await prisma.$transaction(async (tx) => {
+    const term = await tx.term.findFirst({
+      where: { id, schoolId: actor.schoolId },
+      include: {
+        _count: { select: { assignments: true, curriculumSchemes: true, importBatches: true } },
+      },
+    });
+    if (!term) throw notFound('Term');
+    const { assignments, curriculumSchemes, importBatches } = term._count;
+    if (assignments)
+      throw conflict(
+        `Teachers have ${assignments} class subject${assignments === 1 ? '' : 's'} in this term. Delete or move them first.`,
+      );
+    if (curriculumSchemes || importBatches)
+      throw conflict('Delete this term’s scheme of learning on the Curriculum page first');
+    await tx.weekPolicy.deleteMany({ where: { termId: id } });
+    await tx.termWeek.deleteMany({ where: { termId: id } });
+    await tx.term.delete({ where: { id } });
+    if (term.isCurrent) {
+      // Keep a current term while any remain: the latest one takes over.
+      const next = await tx.term.findFirst({
+        where: { schoolId: actor.schoolId },
+        orderBy: { startDate: 'desc' },
+      });
+      if (next) await tx.term.update({ where: { id: next.id }, data: { isCurrent: true } });
+    }
+    await audit(tx, {
+      ...auditFor(actor),
+      action: 'term.deleted',
+      entityType: 'Term',
+      entityId: id,
+      metadata: { name: term.name },
+    });
+  });
 }
 
 export async function listTerms(schoolId: string) {
@@ -338,6 +420,31 @@ export async function updateClass(
       throw validation({ name: ['A class with this name already exists'] });
     throw err;
   }
+}
+
+/** A class with subjects assigned is deactivated instead, so its history stays. */
+export async function deleteClass(actor: Actor, id: string) {
+  await prisma.$transaction(async (tx) => {
+    const c = await tx.schoolClass.findFirst({
+      where: { id, schoolId: actor.schoolId },
+      include: { _count: { select: { assignments: true, timetableEntries: true } } },
+    });
+    if (!c) throw notFound('Class');
+    if (c._count.assignments || c._count.timetableEntries) {
+      throw conflict(
+        `${c.name} has subjects assigned, so it cannot be deleted. Deactivate it instead, or delete its class subjects first.`,
+      );
+    }
+    await tx.weekPolicy.deleteMany({ where: { classId: id } });
+    await tx.schoolClass.delete({ where: { id } });
+    await audit(tx, {
+      ...auditFor(actor),
+      action: 'class.deleted',
+      entityType: 'SchoolClass',
+      entityId: id,
+      metadata: { name: c.name, level: c.level },
+    });
+  });
 }
 
 // ---------- Subjects and languages ----------

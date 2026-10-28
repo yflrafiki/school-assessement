@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route } from 'react-router-dom';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CurriculumPage } from '../features/headmaster/CurriculumPage';
 import { makeMe, mockApi, renderAt } from './render';
@@ -58,6 +58,7 @@ function api(terms: unknown[]) {
         status: 200,
         body: { data: { scheme: { title: 'v1' }, weeks: [], entries: [entry] } },
       };
+    if (method === 'DELETE' && path === '/curriculum/entries/e1') return { status: 204 };
     if (method === 'PATCH' && path === '/curriculum/entries/e1')
       return { status: 200, body: { data: entry } };
     if (path === '/curriculum/schemes') return { status: 200, body: { data: [] } };
@@ -119,5 +120,36 @@ describe('scheme of learning upload', () => {
         indicator: 'B7.1.1.1.1 Model number quantities up to 1,000,000',
       }),
     );
+  });
+
+  it('deletes a topic after confirmation', async () => {
+    const calls = api([term]);
+    renderAt(
+      '/h/curriculum',
+      <Route path="/h/curriculum" element={<CurriculumPage />} />,
+      makeMe('HEADMASTER'),
+    );
+    await screen.findByText(/Model number quantities/);
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('Delete this topic?')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'DELETE' && c.path === '/curriculum/entries/e1')).toBe(
+        true,
+      ),
+    );
+  });
+
+  it('hides editing and deleting from a school admin', async () => {
+    api([term]);
+    renderAt(
+      '/h/curriculum',
+      <Route path="/h/curriculum" element={<CurriculumPage />} />,
+      makeMe('SCHOOL_ADMIN'),
+    );
+    await screen.findByText(/Model number quantities/);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 });

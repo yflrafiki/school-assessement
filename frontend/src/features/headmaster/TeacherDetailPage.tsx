@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,11 +17,12 @@ import { Pagination } from '../../components/Filters';
 import { ProgressGrid } from '../progress/ProgressGrid';
 import type { AssignmentProgress, AuditEntry, TeacherDetail } from '../../types/api';
 
-type Confirm = 'deactivate' | 'reactivate' | 'resend' | 'reset' | 'absence' | null;
+type Confirm = 'delete' | 'deactivate' | 'reactivate' | 'resend' | 'reset' | 'absence' | null;
 
 export function TeacherDetailPage() {
   const { id = '' } = useParams();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -82,6 +83,11 @@ export function TeacherDetailPage() {
                     onClick={() => setConfirm('resend')}
                   >
                     Resend invitation
+                  </button>
+                )}
+                {t.status === 'PENDING_ACTIVATION' && (
+                  <button type="button" className="btn-danger" onClick={() => setConfirm('delete')}>
+                    Delete
                   </button>
                 )}
                 {t.status === 'ACTIVE' && (
@@ -288,6 +294,19 @@ export function TeacherDetailPage() {
             }}
           />
 
+          <ConfirmDialog
+            open={confirm === 'delete'}
+            title={`Delete ${t.fullName}?`}
+            danger
+            confirmLabel="Delete"
+            body="They have not activated their account yet, so they are removed completely, with their invitation and their class subjects. Use this for a teacher added by mistake or with the wrong email."
+            onClose={() => setConfirm(null)}
+            onConfirm={async () => {
+              await api.delete(`/teachers/${id}`);
+              refresh();
+              navigate('/h/teachers');
+            }}
+          />
           <ConfirmDialog
             open={confirm === 'deactivate'}
             title={`Deactivate ${t.fullName}?`}

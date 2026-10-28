@@ -588,6 +588,77 @@ async function publishInTx(tx: Prisma.TransactionClient, actor: Actor, schemeId:
   return { id: scheme.id, status: 'PUBLISHED' as const };
 }
 
+/**
+ * Deletes an uploaded PDF with everything it created, so it (or a corrected file) can be
+ * uploaded again. Refused once teachers have recorded lessons against its topics: uploading a
+ * replacement instead archives it and keeps those records. When the live scheme is deleted,
+ * the term's previous version (if any) goes live again; lessons are re-planned either way.
+ */
+export async function deleteImport(actor: Actor, batchId: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      const batch = await tx.importBatch.findFirst({
+        where: { id: batchId, schoolId: actor.schoolId },
+        include: { scheme: true },
+      });
+      if (!batch) throw notFound('Import');
+      const scheme = batch.scheme;
+      let restored: { id: string; version: number } | null = null;
+      if (scheme) {
+        const used = await tx.teachingRecordTopic.count({
+          where: { entry: { schemeId: scheme.id } },
+        });
+        if (used) {
+          throw new AppError(
+            'CONFLICT',
+            `Teachers have recorded lessons against topics from this PDF (${used} times), so it cannot be deleted. Upload the corrected PDF instead: it replaces this one and keeps those records.`,
+            { used },
+          );
+        }
+        await tx.curriculumEntry.deleteMany({ where: { schemeId: scheme.id } });
+        await tx.curriculumWeek.deleteMany({ where: { schemeId: scheme.id } });
+        await tx.curriculumScheme.delete({ where: { id: scheme.id } });
+        if (scheme.status === 'PUBLISHED') {
+          const previous = await tx.curriculumScheme.findFirst({
+            where: { termId: scheme.termId, status: 'ARCHIVED' },
+            orderBy: { version: 'desc' },
+          });
+          if (previous) {
+            await tx.curriculumScheme.update({
+              where: { id: previous.id },
+              data: { status: 'PUBLISHED' },
+            });
+            await tx.curriculumEntry.updateMany({
+              where: { schemeId: previous.id },
+              data: { retiredAt: null },
+            });
+            restored = { id: previous.id, version: previous.version };
+          }
+          await syncSchoolAssignments(tx, actor.schoolId, { termId: scheme.termId });
+        }
+      }
+      await tx.importRow.deleteMany({ where: { batchId } });
+      await tx.importBatch.delete({ where: { id: batchId } });
+      await audit(tx, {
+        schoolId: actor.schoolId,
+        actorId: actor.userId,
+        action: 'curriculum.import_deleted',
+        entityType: 'ImportBatch',
+        entityId: batchId,
+        metadata: {
+          fileName: batch.fileName,
+          schemeId: scheme?.id ?? null,
+          wasLive: scheme?.status === 'PUBLISHED',
+          restored,
+        },
+        requestId: actor.requestId,
+      });
+      return { restored };
+    },
+    { timeout: 120_000 },
+  );
+}
+
 // ---------- Editing topics ----------
 
 /**
@@ -649,6 +720,41 @@ export async function updateEntry(
       requestId: actor.requestId,
     });
     return updated;
+  });
+}
+
+/** Removes one topic, for example a row the PDF repeated or misread. */
+export async function deleteEntry(actor: Actor, entryId: string) {
+  await prisma.$transaction(async (tx) => {
+    const entry = await tx.curriculumEntry.findFirst({
+      where: { id: entryId, schoolId: actor.schoolId },
+      include: { scheme: { select: { status: true } }, _count: { select: { topics: true } } },
+    });
+    if (!entry) throw notFound('Topic');
+    if (entry.scheme.status === 'ARCHIVED' || entry.retiredAt) {
+      throw conflict('This topic belongs to an older scheme and can no longer be changed');
+    }
+    if (entry._count.topics) {
+      throw conflict(
+        'Lessons have already been recorded against this topic, so it cannot be deleted. Edit its wording instead.',
+      );
+    }
+    await tx.curriculumEntry.delete({ where: { id: entry.id } });
+    await audit(tx, {
+      schoolId: actor.schoolId,
+      actorId: actor.userId,
+      action: 'curriculum.topic_deleted',
+      entityType: 'CurriculumEntry',
+      entityId: entry.id,
+      metadata: {
+        level: entry.level,
+        subjectId: entry.subjectId,
+        weekNumber: entry.weekNumber,
+        strand: entry.strand,
+        indicator: entry.indicator,
+      },
+      requestId: actor.requestId,
+    });
   });
 }
 

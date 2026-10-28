@@ -61,6 +61,24 @@ curriculumRouter.patch(
   },
 );
 
+curriculumRouter.delete(
+  '/curriculum/entries/:id',
+  requirePermission('school.setup'),
+  async (req, res) => {
+    await service.deleteEntry(actor(req), idParam(req));
+    res.status(204).end();
+  },
+);
+
+// Deleting an uploaded PDF can take the term's live topics away, so it is the headmaster's call.
+curriculumRouter.delete(
+  '/curriculum/imports/:id',
+  requirePermission('school.setup'),
+  async (req, res) => {
+    res.json({ data: await service.deleteImport(actor(req), idParam(req)) });
+  },
+);
+
 curriculumRouter.get('/curriculum/imports', importer, async (req, res) => {
   res.json({ data: await service.listImports(auth(req).schoolId) });
 });

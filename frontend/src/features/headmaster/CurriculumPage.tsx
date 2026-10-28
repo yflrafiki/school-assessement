@@ -36,6 +36,9 @@ export function CurriculumPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<Scheme | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; fileName: string; live: boolean } | null>(
+    null,
+  );
   const effectiveTerm = termId || terms.data?.find((t) => t.isCurrent)?.id || '';
 
   const schemes = useQuery({
@@ -267,9 +270,28 @@ export function CurriculumPage() {
                       key: 'open',
                       header: '',
                       render: (b) => (
-                        <Link to={`/h/curriculum/imports/${b.id}`} className="link text-sm">
-                          Details
-                        </Link>
+                        <span className="flex items-center gap-3">
+                          <Link to={`/h/curriculum/imports/${b.id}`} className="link text-sm">
+                            Details
+                          </Link>
+                          {canPublish && (
+                            <button
+                              type="button"
+                              className="btn-ghost h-7 px-2 text-xs text-bad"
+                              onClick={(e) => {
+                                // The row itself opens the details.
+                                e.stopPropagation();
+                                setDeleting({
+                                  id: b.id,
+                                  fileName: b.fileName,
+                                  live: b.scheme?.status === 'PUBLISHED',
+                                });
+                              }}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </span>
                       ),
                     },
                   ]}
@@ -284,6 +306,32 @@ export function CurriculumPage() {
           </QueryView>
         </Section>
       </div>
+      <ConfirmDialog
+        open={!!deleting}
+        danger
+        title={`Delete ${deleting?.fileName ?? 'this PDF'}?`}
+        body={
+          (deleting?.live
+            ? 'Its topics are taken off every teacher’s scheme of work, and the term’s previous version, if there is one, goes live again. Lessons are re-planned. '
+            : 'The upload and its topics are removed. ') +
+          'You can then upload the same or a corrected PDF. If teachers have already recorded lessons against its topics it cannot be deleted; upload the corrected PDF instead, which replaces it and keeps those records.'
+        }
+        confirmLabel="Delete"
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => {
+          const res = await api.delete<One<{ restored: { version: number } | null }>>(
+            `/curriculum/imports/${deleting?.id}`,
+          );
+          setError(null);
+          setNotice(
+            `${deleting?.fileName} was deleted.` +
+              (res.data.restored
+                ? ` Version ${res.data.restored.version} of the scheme is live again.`
+                : ''),
+          );
+          void qc.invalidateQueries();
+        }}
+      />
       <ConfirmDialog
         open={!!publishing}
         title="Publish this scheme?"

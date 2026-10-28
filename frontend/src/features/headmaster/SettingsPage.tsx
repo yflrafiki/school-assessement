@@ -10,6 +10,7 @@ import { PageHeader, Section } from '../../components/PageHeader';
 import { Alert, EmptyState, QueryView } from '../../components/States';
 import { StatusBadge } from '../../components/StatusBadge';
 import { DataTable } from '../../components/DataTable';
+import { ConfirmDialog } from '../../components/Overlays';
 import { refKeys, useAcademicYears, useClasses, useSubjects, useTerms } from '../reference';
 import { meKey } from '../auth/useMe';
 
@@ -72,6 +73,74 @@ function useAction<T>(fn: (input: T) => Promise<unknown>, keys: readonly (readon
     onError: (e) => setError(fullErrorMessage(e)),
   });
   return { ...m, error };
+}
+
+type Pending =
+  | {
+      kind: 'rename';
+      title: string;
+      label: string;
+      value: string;
+      save: (v: string) => Promise<unknown>;
+    }
+  | { kind: 'delete'; title: string; body: string; run: () => Promise<unknown> };
+
+/**
+ * Rename and delete dialogs shared by the setup tabs. The server refuses a delete while
+ * something depends on the item, and the dialog shows its reason.
+ */
+function useManage(keys: readonly (readonly unknown[])[]) {
+  const qc = useQueryClient();
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [value, setValue] = useState('');
+  const refresh = () => keys.forEach((k) => void qc.invalidateQueries({ queryKey: k }));
+  const dialogs = (
+    <>
+      <ConfirmDialog
+        open={pending?.kind === 'rename'}
+        title={pending?.title ?? ''}
+        confirmLabel="Save"
+        onClose={() => setPending(null)}
+        onConfirm={async () => {
+          if (pending?.kind !== 'rename') return;
+          await pending.save(value.trim());
+          refresh();
+        }}
+      >
+        <label className="block text-sm">
+          <span className="label">{pending?.kind === 'rename' ? pending.label : ''}</span>
+          <input
+            className="input"
+            required
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        </label>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={pending?.kind === 'delete'}
+        danger
+        title={pending?.title ?? ''}
+        body={pending?.kind === 'delete' ? pending.body : ''}
+        confirmLabel="Delete"
+        onClose={() => setPending(null)}
+        onConfirm={async () => {
+          if (pending?.kind !== 'delete') return;
+          await pending.run();
+          refresh();
+        }}
+      />
+    </>
+  );
+  return {
+    rename: (p: Omit<Extract<Pending, { kind: 'rename' }>, 'kind'>) => {
+      setValue(p.value);
+      setPending({ kind: 'rename', ...p });
+    },
+    remove: (p: Omit<Extract<Pending, { kind: 'delete' }>, 'kind'>) =>
+      setPending({ kind: 'delete', ...p }),
+    dialogs,
+  };
 }
 
 function SchoolTab() {
@@ -143,6 +212,7 @@ function TermsTab() {
     (id: string) => api.patch(`/terms/${id}`, { isCurrent: true }),
     [refKeys.years, refKeys.terms],
   );
+  const manage = useManage([refKeys.years, refKeys.terms]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
@@ -153,12 +223,43 @@ function TermsTab() {
               <ul className="divide-y divide-line">
                 {rows.map((y) => (
                   <li key={y.id} className="px-4 py-3">
-                    <p className="font-medium">
-                      {y.name}{' '}
-                      <span className="text-sm font-normal text-muted">
-                        {formatDate(y.startDate)} to {formatDate(y.endDate)}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium">
+                        {y.name}{' '}
+                        <span className="text-sm font-normal text-muted">
+                          {formatDate(y.startDate)} to {formatDate(y.endDate)}
+                        </span>
+                      </p>
+                      <span className="flex gap-1">
+                        <button
+                          type="button"
+                          className="btn-ghost h-7 px-2 text-xs"
+                          onClick={() =>
+                            manage.rename({
+                              title: 'Rename academic year',
+                              label: 'Name, for example 2026/2027',
+                              value: y.name,
+                              save: (name) => api.patch(`/academic-years/${y.id}`, { name }),
+                            })
+                          }
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost h-7 px-2 text-xs text-bad"
+                          onClick={() =>
+                            manage.remove({
+                              title: `Delete ${y.name}?`,
+                              body: 'Only an academic year with no terms can be deleted. Delete its terms first.',
+                              run: () => api.delete(`/academic-years/${y.id}`),
+                            })
+                          }
+                        >
+                          Delete
+                        </button>
                       </span>
-                    </p>
+                    </div>
                     <ul className="mt-2 space-y-1">
                       {y.terms.map((t) => (
                         <li
@@ -169,17 +270,46 @@ function TermsTab() {
                             {t.name}: {formatDate(t.startDate)} to {formatDate(t.endDate)} ·{' '}
                             {t.weekCount} weeks set
                           </span>
-                          {t.isCurrent ? (
-                            <StatusBadge status="ACTIVE" />
-                          ) : (
+                          <span className="flex flex-wrap items-center gap-1">
+                            {t.isCurrent ? (
+                              <StatusBadge status="ACTIVE" />
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-ghost h-7 px-2 text-xs"
+                                onClick={() => setCurrent.mutate(t.id)}
+                              >
+                                Make current
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="btn-ghost h-7 px-2 text-xs"
-                              onClick={() => setCurrent.mutate(t.id)}
+                              onClick={() =>
+                                manage.rename({
+                                  title: 'Rename term',
+                                  label: 'Term name',
+                                  value: t.name,
+                                  save: (name) => api.patch(`/terms/${t.id}`, { name }),
+                                })
+                              }
                             >
-                              Make current
+                              Rename
                             </button>
-                          )}
+                            <button
+                              type="button"
+                              className="btn-ghost h-7 px-2 text-xs text-bad"
+                              onClick={() =>
+                                manage.remove({
+                                  title: `Delete ${t.name} ${y.name}?`,
+                                  body: 'Its week dates and special weeks are deleted too. A term with class subjects assigned or a scheme of learning uploaded cannot be deleted until those are removed.',
+                                  run: () => api.delete(`/terms/${t.id}`),
+                                })
+                              }
+                            >
+                              Delete
+                            </button>
+                          </span>
                         </li>
                       ))}
                       {!y.terms.length && <li className="text-sm text-muted">No terms yet.</li>}
@@ -195,6 +325,7 @@ function TermsTab() {
             )
           }
         </QueryView>
+        {manage.dialogs}
         {setCurrent.error && (
           <div className="p-4">
             <Alert>{setCurrent.error}</Alert>
@@ -507,8 +638,10 @@ function ClassesTab() {
       api.patch(`/classes/${c.id}`, { isActive: !c.isActive }),
     [refKeys.classes],
   );
+  const manage = useManage([refKeys.classes]);
   return (
     <Section title="Classes">
+      {manage.dialogs}
       <form
         className="flex flex-wrap items-end gap-2 border-b border-line bg-canvas px-4 py-3"
         onSubmit={(e) => {
@@ -567,13 +700,42 @@ function ClassesTab() {
                   key: 'a',
                   header: '',
                   render: (c) => (
-                    <button
-                      type="button"
-                      className="btn-ghost h-7 px-2 text-xs"
-                      onClick={() => toggle.mutate(c)}
-                    >
-                      {c.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className="btn-ghost h-7 px-2 text-xs"
+                        onClick={() =>
+                          manage.rename({
+                            title: 'Rename class',
+                            label: 'Class name',
+                            value: c.name,
+                            save: (name) => api.patch(`/classes/${c.id}`, { name }),
+                          })
+                        }
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost h-7 px-2 text-xs"
+                        onClick={() => toggle.mutate(c)}
+                      >
+                        {c.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost h-7 px-2 text-xs text-bad"
+                        onClick={() =>
+                          manage.remove({
+                            title: `Delete ${c.name}?`,
+                            body: 'Only a class with no subjects assigned can be deleted. A class that has been taught is deactivated instead, so its records stay.',
+                            run: () => api.delete(`/classes/${c.id}`),
+                          })
+                        }
+                      >
+                        Delete
+                      </button>
+                    </span>
                   ),
                 },
               ]}

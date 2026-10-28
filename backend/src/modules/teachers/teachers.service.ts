@@ -10,7 +10,11 @@ import { audit } from '../../lib/audit.js';
 import { fromDbDate, toDbDate } from '../../lib/dates.js';
 import { pageArgs, pageMeta } from '../../lib/pagination.js';
 import { issueInvitation, issuePasswordReset, revokeAllSessions } from '../auth/auth.service.js';
-import { createAssignments, listAssignments } from '../assignments/assignments.service.js';
+import {
+  createAssignments,
+  listAssignments,
+  removeAssignmentData,
+} from '../assignments/assignments.service.js';
 import { closedDates, lastSchoolDayOnOrBefore, schoolNow } from '../lessons/lessons.service.js';
 
 interface Actor {
@@ -469,4 +473,40 @@ export async function teacherAudit(
     })),
     meta: pageMeta(page, pageSize, total),
   };
+}
+
+/**
+ * Deletes a teacher who never activated their account, for example one invited with the
+ * wrong email. Anyone who has signed in is deactivated instead, so their history stays.
+ */
+export async function deleteTeacher(actor: Actor, teacherProfileId: string) {
+  const t = await findTeacher(actor.schoolId, teacherProfileId);
+  if (t.user.status !== 'PENDING_ACTIVATION' || t.user.passwordHash) {
+    throw conflict(
+      'Only a teacher who has never activated their account can be deleted. Deactivate this teacher instead; their records are kept.',
+    );
+  }
+  await prisma.$transaction(async (tx) => {
+    const assignments = await tx.teachingAssignment.findMany({
+      where: { teacherProfileId },
+      select: { id: true },
+    });
+    for (const a of assignments) await removeAssignmentData(tx, a.id);
+    await tx.timetableEntry.deleteMany({ where: { teacherProfileId } });
+    await tx.absence.deleteMany({ where: { teacherProfileId } });
+    await tx.teacherProfile.delete({ where: { id: teacherProfileId } });
+    await tx.authToken.deleteMany({ where: { userId: t.user.id } });
+    await tx.session.deleteMany({ where: { userId: t.user.id } });
+    await tx.notification.deleteMany({ where: { recipientId: t.user.id } });
+    await tx.user.delete({ where: { id: t.user.id } });
+    await audit(tx, {
+      schoolId: actor.schoolId,
+      actorId: actor.userId,
+      action: 'teacher.deleted',
+      entityType: 'User',
+      entityId: t.user.id,
+      metadata: { fullName: t.user.fullName, email: t.user.email },
+      requestId: actor.requestId,
+    });
+  });
 }

@@ -38,6 +38,11 @@ teachersRouter.patch('/teachers/:id', manage, async (req, res) => {
   });
 });
 
+teachersRouter.delete('/teachers/:id', manage, async (req, res) => {
+  await service.deleteTeacher(actor(req), idParam(req));
+  res.status(204).end();
+});
+
 teachersRouter.post('/teachers/:id/deactivate', manage, async (req, res) => {
   res.json({ data: await service.deactivateTeacher(actor(req), idParam(req)) });
 });

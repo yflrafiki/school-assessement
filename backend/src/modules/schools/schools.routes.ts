@@ -7,6 +7,7 @@ import {
   createLanguageBody,
   createTermBody,
   termWeeksBody,
+  updateAcademicYearBody,
   updateClassBody,
   updateSchoolBody,
   updateSubjectBody,
@@ -62,6 +63,22 @@ schoolsRouter.post('/academic-years', setup, async (req, res) => {
   res.status(201).json({
     data: await service.createAcademicYear(actor(req), body(req, createAcademicYearBody)),
   });
+});
+schoolsRouter.patch('/academic-years/:id', setup, async (req, res) => {
+  const { name } = body(req, updateAcademicYearBody);
+  res.json({ data: await service.renameAcademicYear(actor(req), idParam(req), name) });
+});
+schoolsRouter.delete('/academic-years/:id', setup, async (req, res) => {
+  await service.deleteAcademicYear(actor(req), idParam(req));
+  res.status(204).end();
+});
+schoolsRouter.delete('/terms/:id', setup, async (req, res) => {
+  await service.deleteTerm(actor(req), idParam(req));
+  res.status(204).end();
+});
+schoolsRouter.delete('/classes/:id', setup, async (req, res) => {
+  await service.deleteClass(actor(req), idParam(req));
+  res.status(204).end();
 });
 schoolsRouter.post('/terms', setup, async (req, res) => {
   res.status(201).json({ data: await service.createTerm(actor(req), body(req, createTermBody)) });
