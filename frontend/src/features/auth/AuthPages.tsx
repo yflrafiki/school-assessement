@@ -8,6 +8,7 @@ import { PASSWORD_MIN_LENGTH, forgotPasswordBody, loginBody, newPassword } from 
 import { api, setSessionToken, type One } from '../../lib/api';
 import { applyServerErrors, errorMessage } from '../../lib/forms';
 import { FormField } from '../../components/FormField';
+import { SubmitButton } from '../../components/SubmitButton';
 import { PasswordInput } from '../../components/PasswordInput';
 import { Alert, LoadingState } from '../../components/States';
 import { PublicLayout } from '../../app/AppShell';
@@ -25,6 +26,23 @@ function useFragmentToken(): string {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
   }, []);
   return token;
+}
+
+/**
+ * Shown under a submit button while its request runs. If it takes longer than a few seconds
+ * (the hosted database can take a moment to wake up), it says so instead of looking frozen.
+ */
+function PendingNotice({ message }: { message: string }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <p role="status" aria-live="polite" className="text-center text-sm text-muted">
+      {slow ? 'Still working. The server can take a few seconds to wake up, please wait…' : message}
+    </p>
+  );
 }
 
 function safeReturnTo(value: string | null): string | null {
@@ -71,21 +89,29 @@ export function LoginPage() {
           login.mutate(v);
         })}
       >
-        <FormField label="Email" error={form.formState.errors.email?.message}>
-          <input
-            className="input"
-            type="email"
-            autoComplete="username"
-            {...form.register('email')}
-          />
-        </FormField>
-        <FormField label="Password" error={form.formState.errors.password?.message}>
-          <PasswordInput autoComplete="current-password" {...form.register('password')} />
-        </FormField>
+        {/* Locked while signing in, so the details cannot change mid-request. */}
+        <fieldset disabled={login.isPending} className="space-y-4">
+          <FormField label="Email" error={form.formState.errors.email?.message}>
+            <input
+              className="input"
+              type="email"
+              autoComplete="username"
+              {...form.register('email')}
+            />
+          </FormField>
+          <FormField label="Password" error={form.formState.errors.password?.message}>
+            <PasswordInput autoComplete="current-password" {...form.register('password')} />
+          </FormField>
+        </fieldset>
         {formError && <Alert>{formError}</Alert>}
-        <button type="submit" className="btn-primary w-full" disabled={login.isPending}>
-          {login.isPending ? 'Signing in…' : 'Sign in'}
-        </button>
+        <SubmitButton
+          pending={login.isPending}
+          pendingLabel="Signing in…"
+          className="btn-primary w-full"
+        >
+          Sign in
+        </SubmitButton>
+        {login.isPending && <PendingNotice message="Checking your details…" />}
         <p className="text-center text-sm">
           <Link to="/forgot-password" className="link">
             Forgot your password?
@@ -199,9 +225,13 @@ export function ActivatePage() {
           <PasswordInput autoComplete="new-password" {...form.register('confirm')} />
         </FormField>
         {formError && <Alert>{formError}</Alert>}
-        <button type="submit" className="btn-primary w-full" disabled={accept.isPending}>
-          {accept.isPending ? 'Activating…' : 'Activate account'}
-        </button>
+        <SubmitButton
+          pending={accept.isPending}
+          pendingLabel="Activating…"
+          className="btn-primary w-full"
+        >
+          Activate account
+        </SubmitButton>
       </form>
     </PublicLayout>
   );
@@ -252,9 +282,13 @@ export function ForgotPasswordPage() {
             />
           </FormField>
           {formError && <Alert>{formError}</Alert>}
-          <button type="submit" className="btn-primary w-full" disabled={forgot.isPending}>
-            {forgot.isPending ? 'Sending…' : 'Send reset link'}
-          </button>
+          <SubmitButton
+            pending={forgot.isPending}
+            pendingLabel="Sending…"
+            className="btn-primary w-full"
+          >
+            Send reset link
+          </SubmitButton>
           <p className="text-center text-sm">
             <Link to="/login" className="link">
               Back to sign in
@@ -331,9 +365,13 @@ export function ResetPasswordPage() {
               </Link>
             </Alert>
           )}
-          <button type="submit" className="btn-primary w-full" disabled={reset.isPending}>
-            {reset.isPending ? 'Saving…' : 'Save new password'}
-          </button>
+          <SubmitButton
+            pending={reset.isPending}
+            pendingLabel="Saving…"
+            className="btn-primary w-full"
+          >
+            Save new password
+          </SubmitButton>
         </form>
       )}
     </PublicLayout>

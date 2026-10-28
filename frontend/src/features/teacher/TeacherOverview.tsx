@@ -4,6 +4,7 @@ import { api, type One } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { PageHeader, Section } from '../../components/PageHeader';
 import { EmptyState, QueryView } from '../../components/States';
+import { TeacherOverviewSkeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TeacherLessonList } from '../lessons/LessonList';
 import { useCurrentUser } from '../auth/useMe';
@@ -32,7 +33,7 @@ export function TeacherOverview() {
         title={`Good day, ${me.fullName.split(' ')[0]}`}
         description={query.data ? formatDate(query.data.date) : undefined}
       />
-      <QueryView query={query}>
+      <QueryView query={query} skeleton={<TeacherOverviewSkeleton />}>
         {(d) => (
           <div className="grid gap-5 lg:grid-cols-3">
             <div className="space-y-5 lg:col-span-2">

@@ -4,6 +4,7 @@ import { api, type One } from '../../lib/api';
 import { formatDate, formatShortDate, percent } from '../../lib/format';
 import { PageHeader, Section } from '../../components/PageHeader';
 import { EmptyState, QueryView } from '../../components/States';
+import { HeadOverviewSkeleton } from '../../components/Skeleton';
 import { useCurrentUser } from '../auth/useMe';
 
 interface HeadDashboard {
@@ -71,7 +72,7 @@ export function HeadOverview() {
             : me.school.name
         }
       />
-      <QueryView query={query}>
+      <QueryView query={query} skeleton={<HeadOverviewSkeleton />}>
         {(d) => {
           if (!d.term) {
             return (

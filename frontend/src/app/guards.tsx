@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Permission, Role } from '@school/shared';
 import { setUnauthenticatedHandler } from '../lib/api';
 import { meKey, useMe } from '../features/auth/useMe';
-import { ErrorState, ForbiddenState, LoadingState } from '../components/States';
+import { ErrorState, ForbiddenState } from '../components/States';
+import { AppShellSkeleton } from '../components/Skeleton';
 
 export function homeFor(role: Role) {
   return role === 'TEACHER' ? '/t' : '/h';
@@ -29,7 +30,7 @@ export function SessionWatcher() {
 export function RequireAuth({ roles, children }: { roles: Role[]; children: ReactNode }) {
   const me = useMe();
   const location = useLocation();
-  if (me.isPending) return <LoadingState label="Checking your session" />;
+  if (me.isPending) return <AppShellSkeleton />;
   if (me.error) return <ErrorState error={me.error} onRetry={() => void me.refetch()} />;
   if (!me.data) {
     const returnTo = encodeURIComponent(location.pathname + location.search);
@@ -54,7 +55,7 @@ export function RequirePermission({
 
 export function HomeRedirect() {
   const me = useMe();
-  if (me.isPending) return <LoadingState />;
+  if (me.isPending) return <AppShellSkeleton />;
   if (!me.data) return <Navigate to="/login" replace />;
   return <Navigate to={homeFor(me.data.role)} replace />;
 }

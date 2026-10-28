@@ -1,21 +1,11 @@
 import type { ReactNode } from 'react';
 import { FiAlertTriangle, FiInbox, FiLock } from 'react-icons/fi';
 import { ApiError } from '../lib/api';
+import { SkeletonRows } from './Skeleton';
 
+/** Loading placeholder for data pages: skeleton rows in the shape of a table or list. */
 export function LoadingState({ label = 'Loading' }: { label?: string }) {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center justify-center gap-3 px-4 py-12 text-sm text-muted"
-    >
-      <span
-        className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent"
-        aria-hidden
-      />
-      {label}…
-    </div>
-  );
+  return <SkeletonRows label={label} />;
 }
 
 export function EmptyState({
@@ -75,17 +65,22 @@ interface QueryLike<T> {
   refetch: () => unknown;
 }
 
-/** Renders loading and error states for a query, and the children once data is there. */
+/**
+ * Renders a skeleton while a query loads, an error with retry if it fails, and the children
+ * once data is there. Pass `skeleton` when the page has its own shape (dashboards, forms).
+ */
 export function QueryView<T>({
   query,
   children,
   label,
+  skeleton,
 }: {
   query: QueryLike<T>;
   children: (data: T) => ReactNode;
   label?: string;
+  skeleton?: ReactNode;
 }) {
-  if (query.isPending) return <LoadingState {...(label ? { label } : {})} />;
+  if (query.isPending) return skeleton ?? <LoadingState {...(label ? { label } : {})} />;
   if (query.error || query.data === undefined)
     return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   return <>{children(query.data)}</>;

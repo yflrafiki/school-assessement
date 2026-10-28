@@ -8,6 +8,7 @@ import { api } from '../../lib/api';
 import { applyServerErrors } from '../../lib/forms';
 import { PageHeader, Section } from '../../components/PageHeader';
 import { FormField } from '../../components/FormField';
+import { SubmitButton } from '../../components/SubmitButton';
 import { PasswordInput } from '../../components/PasswordInput';
 import { Alert } from '../../components/States';
 import { useCurrentUser } from './useMe';
@@ -107,9 +108,13 @@ export function ProfilePage() {
               <Alert tone="ok">Password changed. Your other devices have been signed out.</Alert>
             )}
             <div className="flex justify-end">
-              <button type="submit" className="btn-primary" disabled={change.isPending}>
-                {change.isPending ? 'Saving…' : 'Change password'}
-              </button>
+              <SubmitButton
+                pending={change.isPending}
+                pendingLabel="Saving…"
+                className="btn-primary"
+              >
+                Change password
+              </SubmitButton>
             </div>
           </form>
         </Section>
