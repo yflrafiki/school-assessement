@@ -25,6 +25,7 @@ import {
   useCurrentTerm,
   useSubjects,
 } from '../reference';
+import { QuickAddClasses } from './QuickAddClasses';
 import type { TeacherDetail, TeacherSummary } from '../../types/api';
 
 const KEYS = [
@@ -320,6 +321,11 @@ function AddTeacherDrawer({
             <p className="mb-2 text-sm text-muted">
               Create a current term in Settings before assigning subjects.
             </p>
+          )}
+          {term.data && classes.isSuccess && !classOptions(classes.data).length && (
+            <div className="mb-2">
+              <QuickAddClasses />
+            </div>
           )}
           <ul className="space-y-2">
             {pairs.fields.map((f, i) => (

@@ -11,6 +11,7 @@ import { FilterBar, FilterSelect } from '../../components/Filters';
 import { Alert, EmptyState, QueryView } from '../../components/States';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ConfirmDialog } from '../../components/Overlays';
+import { QuickAddClasses } from './QuickAddClasses';
 import { classOptions, subjectOptions, useClasses, useSubjects, useTerms } from '../reference';
 import type { Assignment, TeacherSummary } from '../../types/api';
 
@@ -117,6 +118,11 @@ export function AssignmentsPage() {
           />
         </FilterBar>
 
+        {termId && classes.isSuccess && !classOptions(classes.data).length && (
+          <div className="border-b border-line px-4 py-3">
+            <QuickAddClasses />
+          </div>
+        )}
         {termId && (
           <form
             className="flex flex-wrap items-end gap-2 border-b border-line bg-canvas px-4 py-3"
