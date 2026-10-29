@@ -143,6 +143,10 @@ describe('deleting a class subject', () => {
     const res = await w.head.delete(`/assignments/${w.assignmentId}`);
     expect(res.status).toBe(409);
     expect(res.body.error.message).toMatch(/End it instead/);
+    // Its class then can only be deactivated, and says so.
+    const cls = await w.head.delete(`/classes/${w.classId}`);
+    expect(cls.status).toBe(409);
+    expect(cls.body.error.message).toMatch(/1 lesson record for it.*Deactivate it instead/);
   });
 });
 

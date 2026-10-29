@@ -431,8 +431,12 @@ export async function deleteClass(actor: Actor, id: string) {
     });
     if (!c) throw notFound('Class');
     if (c._count.assignments || c._count.timetableEntries) {
+      const records = await tx.teachingRecord.count({ where: { assignment: { classId: id } } });
       throw conflict(
-        `${c.name} has subjects assigned, so it cannot be deleted. Deactivate it instead, or delete its class subjects first.`,
+        records
+          ? `${c.name} cannot be deleted: teachers have written ${records} lesson record${records === 1 ? '' : 's'} for it, and records are kept. Deactivate it instead; it then disappears from the class lists.`
+          : `${c.name} has subjects assigned, so it cannot be deleted yet. Delete its class subjects under Subjects and classes first, or deactivate it instead.`,
+        { records },
       );
     }
     await tx.weekPolicy.deleteMany({ where: { classId: id } });
