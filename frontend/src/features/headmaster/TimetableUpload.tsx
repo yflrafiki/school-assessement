@@ -8,7 +8,13 @@ import { fullErrorMessage } from '../../lib/forms';
 import { Section } from '../../components/PageHeader';
 import { Alert } from '../../components/States';
 import { useClasses } from '../reference';
-import { readTimetableFile, rowsFromSheets, templateCsv, type DraftRow } from './timetableFile';
+import {
+  readTimetableFile,
+  rowsFromSheets,
+  templateCsv,
+  type DraftRow,
+  type SheetGrid,
+} from './timetableFile';
 
 interface CheckedRow {
   row: number;
@@ -76,7 +82,17 @@ export function TimetableUpload({
     setError(null);
     setChecked(new Map());
     try {
-      const parsed = rowsFromSheets(await readTimetableFile(file));
+      const read = await readTimetableFile(file, (pdf) =>
+        api
+          .upload<One<{ sheets: SheetGrid[]; notes: string[] }>>(
+            '/timetable/import/pdf',
+            pdf,
+            'application/pdf',
+          )
+          .then((r) => r.data),
+      );
+      const parsed = rowsFromSheets(read.sheets);
+      parsed.notes.unshift(...read.notes);
       if (!parsed.rows.length) {
         setError(
           `No lessons were found in ${file.name}. ${parsed.notes.join(' ')} Download the template to see the layout.`,
@@ -133,7 +149,7 @@ export function TimetableUpload({
             ref={fileRef}
             type="file"
             className="sr-only"
-            accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".pdf,.xlsx,.csv,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void choose(f);

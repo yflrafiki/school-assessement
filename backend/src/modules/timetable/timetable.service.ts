@@ -286,6 +286,10 @@ const SUBJECT_SHORT_FORMS: Record<string, string> = {
   creativearts: 'CAD',
   creativeartsanddesign: 'CAD',
   careertechnology: 'CT',
+  ctech: 'CT',
+  cart: 'CAD',
+  carts: 'CAD',
+  creativeart: 'CAD',
   careertech: 'CT',
   ct: 'CT',
   pretech: 'CT',
@@ -338,6 +342,16 @@ export async function importTimetable(
       async (tx) => {
         const classes = await tx.schoolClass.findMany({ where: { schoolId: actor.schoolId } });
         const classByName = new Map(classes.map((c) => [squash(c.name), c]));
+        // "Form 1" and "JHS 1" mean Basic 7. When the school has one class at that level,
+        // that is the class meant.
+        const classByLevelName = (name: string) => {
+          const m = squash(name).match(/^(form|jhs|basic|b)(\d)$/);
+          if (!m) return undefined;
+          const n = Number(m[2]);
+          const level = m[1] === 'form' || m[1] === 'jhs' ? n + 6 : n;
+          const atLevel = classes.filter((c) => c.isActive && c.level === `BASIC_${level}`);
+          return atLevel.length === 1 ? atLevel[0] : undefined;
+        };
         const assignments = await tx.teachingAssignment.findMany({
           where: { schoolId: actor.schoolId, termId: term.id, isActive: true },
           include: {
@@ -353,7 +367,7 @@ export async function importTimetable(
             r.error = 'The end time must be after the start time';
             continue;
           }
-          const cls = classByName.get(squash(r.className));
+          const cls = classByName.get(squash(r.className)) ?? classByLevelName(r.className);
           if (!cls) {
             r.error = `There is no class called "${r.className}". Add it in Settings → Classes, or correct the name.`;
             continue;

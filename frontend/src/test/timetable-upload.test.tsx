@@ -68,6 +68,26 @@ describe('reading a timetable file', () => {
     ]);
   });
 
+  it('reads a PDF grid: keeps Twi, skips break letters and club meetings, splits a shared period', () => {
+    const { rows, notes } = rowsFromSheets([
+      {
+        name: 'Form 2',
+        rows: [
+          ['Day', '8:00 – 9:10', '9:10 – 9:40', '9:40 – 11:30', '1:00 – 2:00'],
+          ['Mon', 'Twi', 'K', 'R.M.E / Maths', 'CLUB MEETING'],
+          ['Thurs', 'C.Tech', 'R B', '', ''],
+        ],
+      },
+    ]);
+    expect(rows).toEqual([
+      { className: 'Form 2', subject: 'Twi', weekday: 1, startTime: '08:00', endTime: '09:10' },
+      { className: 'Form 2', subject: 'R.M.E', weekday: 1, startTime: '09:40', endTime: '10:35' },
+      { className: 'Form 2', subject: 'Maths', weekday: 1, startTime: '10:35', endTime: '11:30' },
+      { className: 'Form 2', subject: 'C.Tech', weekday: 4, startTime: '08:00', endTime: '09:10' },
+    ]);
+    expect(notes[0]).toMatch(/shares one period/);
+  });
+
   it('explains a sheet it cannot read', () => {
     const { rows, notes } = rowsFromSheets([{ name: 'Notes', rows: [['Hello'], ['World']] }]);
     expect(rows).toEqual([]);

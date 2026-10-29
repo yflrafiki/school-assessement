@@ -1,4 +1,4 @@
-import { Router, type Request } from 'express';
+import express, { Router, type Request } from 'express';
 import {
   importTimetableBody,
   listTimetableQuery,
@@ -7,6 +7,10 @@ import {
   updateTimetableEntryBody,
 } from '@school/shared';
 import { auth, body, idParam, query } from '../../lib/http.js';
+import { validation } from '../../lib/errors.js';
+import { logger } from '../../config/logger.js';
+import { rateLimit } from '../../middleware/rateLimit.js';
+import { TooManyTimetablePagesError, readTimetablePdf } from './pdfTimetable.js';
 import { requirePermission } from '../../middleware/requireRole.js';
 import * as service from './timetable.service.js';
 
@@ -59,6 +63,35 @@ timetableRouter.delete(
   async (req, res) => {
     await service.deleteEntry(actor(req), idParam(req));
     res.status(204).end();
+  },
+);
+
+/**
+ * Reads a timetable PDF and returns its grid, one sheet per class. Nothing is saved: the
+ * headmaster checks and edits the rows, then they go through /timetable/import.
+ */
+timetableRouter.post(
+  '/timetable/import/pdf',
+  requirePermission('timetable.manage'),
+  rateLimit({ name: 'timetable-pdf', windowMs: 60 * 60 * 1000, max: 20 }),
+  express.raw({ type: 'application/pdf', limit: '5mb' }),
+  async (req, res) => {
+    const data = Buffer.isBuffer(req.body) ? new Uint8Array(req.body) : null;
+    if (!data || Buffer.from(data.subarray(0, 5)).toString('latin1') !== '%PDF-') {
+      throw validation({ file: ['Upload the timetable as a PDF file'] });
+    }
+    try {
+      res.json({ data: await readTimetablePdf(data) });
+    } catch (err) {
+      logger.warn({ err, requestId: req.requestId }, 'Timetable PDF could not be read');
+      throw validation({
+        file: [
+          err instanceof TooManyTimetablePagesError
+            ? `This PDF has ${err.pages} pages. A timetable has one page per class; check that it is the right file.`
+            : 'This PDF could not be read. Check that it is the timetable, or upload it as Excel instead.',
+        ],
+      });
+    }
   },
 );
 

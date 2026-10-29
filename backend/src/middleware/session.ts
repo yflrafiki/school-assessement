@@ -67,6 +67,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 /** Routes that receive a file instead of JSON, with the one media type each accepts. */
 const FILE_UPLOADS: Record<string, string> = {
   '/curriculum/imports/pdf': 'application/pdf',
+  '/timetable/import/pdf': 'application/pdf',
 };
 
 /** Request bodies must be JSON (or the declared file type); anything else is refused before routing. */

@@ -123,7 +123,14 @@ export function parseCsv(text: string): string[][] {
 }
 
 const NOT_A_LESSON =
-  /^(-+|break|snack break|short break|long break|lunch|lunch break|worship|assembly|games|sports|recess|closing|prep|free|club|clubs|pta|devotion|cleaning)$/i;
+  /^(-+|break|snack break|short break|long break|lunch|lunch break|worship|assembly|games|sports|recess|closing|prep|free|club|clubs|club meeting|clubs meeting|pta|devotion|cleaning)$/i;
+
+/** Letters of a word printed down a merged column, such as B R E A K. */
+const STRAY_LETTERS = /^[a-z](\s+[a-z]){0,2}$/i;
+
+const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const toTime = (m: number) =>
+  `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 const heading = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
 
@@ -174,14 +181,29 @@ export function rowsFromSheets(sheets: SheetGrid[]): { rows: DraftRow[]; notes: 
       } else {
         for (const p of periods) {
           const subject = (r[p.i] ?? '').replace(/\(.*?\)/g, '').trim();
-          if (!subject || NOT_A_LESSON.test(subject)) continue;
-          rows.push({
-            className,
-            subject,
-            weekday: day,
-            startTime: p.range[0],
-            endTime: p.range[1],
+          if (!subject || NOT_A_LESSON.test(subject) || STRAY_LETTERS.test(subject)) continue;
+          // "R.M.E / Maths": two subjects share the period. It is split in half; the times
+          // can be changed before saving.
+          const shared = subject
+            .split(/\s*\/\s*/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const start = toMinutes(p.range[0]);
+          const step = Math.floor((toMinutes(p.range[1]) - start) / shared.length);
+          shared.forEach((s, n) => {
+            rows.push({
+              className,
+              subject: s,
+              weekday: day,
+              startTime: toTime(start + n * step),
+              endTime: n === shared.length - 1 ? p.range[1] : toTime(start + (n + 1) * step),
+            });
           });
+          if (shared.length > 1) {
+            notes.push(
+              `${className}, ${r[dayCol] || 'that day'} ${p.range[0]}–${p.range[1]}: "${subject}" shares one period, so it was split into ${shared.length} equal parts. Check those times below.`,
+            );
+          }
         }
       }
     }
@@ -194,7 +216,18 @@ export function rowsFromSheets(sheets: SheetGrid[]): { rows: DraftRow[]; notes: 
   return { rows, notes };
 }
 
-export async function readTimetableFile(file: File): Promise<SheetGrid[]> {
+export async function readTimetableFile(
+  file: File,
+  readPdf: (file: File) => Promise<{ sheets: SheetGrid[]; notes: string[] }>,
+): Promise<{ sheets: SheetGrid[]; notes: string[] }> {
+  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+    // A PDF's tables are read on the server, like the scheme of learning.
+    return readPdf(file);
+  }
+  return { sheets: await readSpreadsheet(file), notes: [] };
+}
+
+async function readSpreadsheet(file: File): Promise<SheetGrid[]> {
   if (/\.csv$/i.test(file.name) || file.type === 'text/csv') {
     return [{ name: file.name.replace(/\.csv$/i, ''), rows: parseCsv(await file.text()) }];
   }
@@ -205,7 +238,7 @@ export async function readTimetableFile(file: File): Promise<SheetGrid[]> {
     return sheets.map((s) => ({ name: s.sheet, rows: s.data.map((r) => r.map(cellText)) }));
   }
   throw new Error(
-    'Upload the timetable as an Excel file (.xlsx) or CSV. An older .xls file can be saved as .xlsx from Excel.',
+    'Upload the timetable as a PDF, an Excel file (.xlsx) or CSV. An older .xls file can be saved as .xlsx from Excel.',
   );
 }
 
