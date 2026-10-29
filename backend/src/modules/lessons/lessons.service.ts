@@ -538,6 +538,65 @@ export async function waiveLesson(actor: Actor, lessonId: string, reason: string
   return getLesson(actor.schoolId, lessonId);
 }
 
+/**
+ * For a school that starts using the system part-way through a term: every scheduled lesson
+ * before `date` without a submitted record is waived in one step. Waived lessons keep their
+ * curriculum week, so today's lessons stay on the right week and no earlier week locks them.
+ */
+export async function waiveLessonsBefore(
+  actor: Actor,
+  input: { termId: string; date: string; reason: string },
+) {
+  const now = await schoolNow(actor.schoolId);
+  if (input.date > now.date) {
+    throw new AppError('VALIDATION_ERROR', 'Please check the date', {
+      fields: { date: ['Choose today or an earlier date'] },
+    });
+  }
+  return prisma.$transaction(
+    async (tx) => {
+      const term = await tx.term.findFirst({
+        where: { id: input.termId, schoolId: actor.schoolId },
+      });
+      if (!term) throw notFound('Term');
+      const ids = (
+        await tx.teachingAssignment.findMany({
+          where: { schoolId: actor.schoolId, termId: term.id },
+          select: { id: true },
+        })
+      ).map((a) => a.id);
+      await lockAssignmentsInOrder(tx, actor.schoolId, ids);
+      const { count } = await tx.lesson.updateMany({
+        where: {
+          assignmentId: { in: ids },
+          status: 'SCHEDULED',
+          date: { lt: toDbDate(input.date) },
+          weekNumber: { not: null },
+          OR: [{ record: { is: null } }, { record: { is: { status: 'DRAFT' } } }],
+        },
+        data: {
+          status: 'WAIVED',
+          reason: input.reason,
+          decidedById: actor.userId,
+          decidedAt: new Date(),
+        },
+      });
+      for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: false });
+      await audit(tx, {
+        schoolId: actor.schoolId,
+        actorId: actor.userId,
+        action: 'lessons.waived_before',
+        entityType: 'Term',
+        entityId: term.id,
+        metadata: { date: input.date, waived: count, reason: input.reason },
+        requestId: actor.requestId,
+      });
+      return { waived: count };
+    },
+    { timeout: 120_000 },
+  );
+}
+
 export async function rescheduleLesson(
   actor: Actor,
   lessonId: string,

@@ -6,6 +6,7 @@ import {
   listLessonsQuery,
   rescheduleLessonBody,
   timeToMinutes,
+  waiveBeforeBody,
   waiveLessonBody,
 } from '@school/shared';
 import { forbidden } from '../../lib/errors.js';
@@ -61,6 +62,14 @@ lessonsRouter.post('/lessons/:id/cancel', requirePermission('lessons.manage'), a
   const { reason } = body(req, cancelLessonBody);
   res.json({ data: await service.cancelLesson(actor(req), idParam(req), reason) });
 });
+
+lessonsRouter.post(
+  '/lessons/waive-before',
+  requirePermission('lessons.manage'),
+  async (req, res) => {
+    res.json({ data: await service.waiveLessonsBefore(actor(req), body(req, waiveBeforeBody)) });
+  },
+);
 
 lessonsRouter.post('/lessons/:id/waive', requirePermission('lessons.manage'), async (req, res) => {
   const { reason } = body(req, waiveLessonBody);

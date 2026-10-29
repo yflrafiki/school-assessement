@@ -12,6 +12,7 @@ import { Alert, EmptyState, QueryView } from '../../components/States';
 import { Drawer } from '../../components/Overlays';
 import { classOptions, useClasses, useTerms } from '../reference';
 import type { Assignment, TimetableEntry } from '../../types/api';
+import { StartRecordingFrom } from './StartRecordingFrom';
 
 interface PublishResult {
   dryRun: boolean;
@@ -36,6 +37,7 @@ export function TimetablePage() {
   const classes = useClasses();
   const { values, set } = useUrlState(['termId', 'classId'] as const);
   const termId = values.termId || terms.data?.find((t) => t.isCurrent)?.id || '';
+  const term = terms.data?.find((t) => t.id === termId);
   const classId = values.classId || classes.data?.find((c) => c.isActive)?.id || '';
   const [form, setForm] = useState({
     assignmentId: '',
@@ -121,6 +123,7 @@ export function TimetablePage() {
           <Alert tone="ok">{published}</Alert>
         </div>
       )}
+      {term && <StartRecordingFrom key={term.id} term={term} />}
       <Section>
         <FilterBar>
           <FilterSelect

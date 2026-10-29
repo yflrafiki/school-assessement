@@ -72,6 +72,13 @@ export const waiveLessonBody = z.object({
   reason: trimmed(3, 300),
 });
 
+/** Starting to use the system part-way through a term: earlier lessons need no records. */
+export const waiveBeforeBody = z.object({
+  termId: uuid,
+  date: isoDate,
+  reason: trimmed(3, 300).default('Before the school started recording lessons in the system'),
+});
+
 export const createAbsenceBody = z
   .object({
     teacherProfileId: uuid,
