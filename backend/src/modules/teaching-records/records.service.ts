@@ -283,7 +283,19 @@ export async function submitRecord(actor: TeacherActor, input: SubmitRecordBody)
   }
 }
 
-/** The owner may correct the text of a submitted record for 48 hours. Topics and lesson stay fixed. */
+const FIELD_LABELS: Record<string, string> = {
+  taughtSummary: 'what was taught',
+  topicNote: 'topic note',
+  outcomes: 'learning outcomes',
+  challenges: 'challenges',
+  remarks: 'remarks',
+};
+
+/**
+ * The owner may correct the text of a submitted record for 48 hours. Topics and lesson stay
+ * fixed. The headmaster is told at once, like a submission; repeated edits before they read it
+ * update one notification instead of adding more.
+ */
 export async function editRecord(
   actor: TeacherActor,
   recordId: string,
@@ -295,9 +307,15 @@ export async function editRecord(
     remarks?: string | undefined;
   },
 ) {
-  await prisma.$transaction(async (tx) => {
+  const notify = await prisma.$transaction(async (tx) => {
     const record = await tx.teachingRecord.findFirst({
       where: { id: recordId, schoolId: actor.schoolId, teacherProfileId: actor.teacherProfileId },
+      include: {
+        lesson: { select: { date: true, startMinute: true } },
+        assignment: {
+          select: { subject: { select: { name: true } }, schoolClass: { select: { name: true } } },
+        },
+      },
     });
     if (!record) throw notFound('Record');
     if (record.status !== 'SUBMITTED' || !record.submittedAt) {
@@ -313,7 +331,7 @@ export async function editRecord(
     const changed = Object.entries(input)
       .filter(([k, v]) => v !== undefined && v !== record[k as keyof typeof record])
       .map(([k]) => k);
-    if (!changed.length) return;
+    if (!changed.length) return null;
     await tx.teachingRecord.update({
       where: { id: record.id },
       data: {
@@ -335,7 +353,48 @@ export async function editRecord(
       metadata: { fields: changed },
       requestId: actor.requestId,
     });
+
+    const headmasters = await tx.user.findMany({
+      where: { schoolId: actor.schoolId, role: 'HEADMASTER', status: 'ACTIVE' },
+      select: { id: true },
+    });
+    const title = `${actor.fullName} edited the record for ${record.assignment.subject.name}, ${record.assignment.schoolClass.name}`;
+    const body = `Changed: ${changed.map((f) => FIELD_LABELS[f] ?? f).join(', ')}. Week ${record.weekNumber}, lesson of ${fromDbDate(record.lesson.date)} at ${minutesToTime(record.lesson.startMinute)}.`;
+    for (const h of headmasters) {
+      const unread = await tx.notification.findFirst({
+        where: { recipientId: h.id, recordId: record.id, type: 'RECORD_EDITED', readAt: null },
+        select: { id: true },
+      });
+      if (unread) {
+        await tx.notification.update({
+          where: { id: unread.id },
+          data: { title, body, createdAt: new Date() },
+        });
+      } else {
+        await tx.notification.create({
+          data: {
+            schoolId: actor.schoolId,
+            recipientId: h.id,
+            type: 'RECORD_EDITED',
+            recordId: record.id,
+            title,
+            body,
+          },
+        });
+      }
+    }
+    return { recipientIds: headmasters.map((h) => h.id), title, body };
   });
+
+  // Push to open headmaster tabs only now that the change is committed.
+  if (notify) {
+    for (const id of notify.recipientIds) {
+      publishToUser(id, {
+        type: 'notification',
+        notification: { title: notify.title, body: notify.body, recordId },
+      });
+    }
+  }
   return getRecord(actor.schoolId, recordId, { teacherProfileId: actor.teacherProfileId });
 }
 

@@ -99,6 +99,7 @@ enum ImportRowDecision {
 
 enum NotificationType {
   RECORD_SUBMITTED
+  RECORD_EDITED
   EMAIL_QUOTA_WARNING
 }
 

@@ -198,7 +198,7 @@ export interface TimetableEntry {
 
 export interface Notification {
   id: string;
-  type: 'RECORD_SUBMITTED' | 'EMAIL_QUOTA_WARNING';
+  type: 'RECORD_SUBMITTED' | 'RECORD_EDITED' | 'EMAIL_QUOTA_WARNING';
   title: string;
   body: string;
   recordId: string | null;

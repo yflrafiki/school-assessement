@@ -263,6 +263,53 @@ describe('live notifications', () => {
     }
   });
 
+  it('pushes a teacher’s edit of a submitted record, keeping one unread notice per record', async () => {
+    const w = await world();
+    const [first] = await lessonsOfWeek(w, 1);
+    const recordId = expectOk(await submit(w, first!.id)).body.data.record.id as string;
+    const stream = await openStream(w.head.token);
+    try {
+      await stream.waitFor(() => stream.events.some((e) => e.event === 'ready'));
+      expectOk(
+        await w.teacher.patch(`/teaching-records/${recordId}`, {
+          remarks: 'Learners need more practice with rounding.',
+        }),
+      );
+      await stream.waitFor(() => stream.events.some((e) => e.event === 'notification'));
+      const pushed = stream.events.find((e) => e.event === 'notification')!.data as {
+        title: string;
+        body: string;
+        recordId: string;
+      };
+      expect(pushed.recordId).toBe(recordId);
+      expect(pushed.title).toBe('Kofi Boateng edited the record for Mathematics, B7A');
+      expect(pushed.body).toMatch(/^Changed: remarks\. Week 1/);
+
+      expectOk(
+        await w.teacher.patch(`/teaching-records/${recordId}`, {
+          outcomes: 'Most learners rounded to the nearest ten correctly.',
+        }),
+      );
+      await stream.waitFor(
+        () => stream.events.filter((e) => e.event === 'notification').length === 2,
+      );
+      const edited = await prisma.notification.findMany({ where: { type: 'RECORD_EDITED' } });
+      expect(edited).toHaveLength(1);
+      expect(edited[0]!.body).toMatch(/^Changed: learning outcomes/);
+
+      // Saving the same text again changes nothing and tells nobody.
+      expectOk(
+        await w.teacher.patch(`/teaching-records/${recordId}`, {
+          outcomes: 'Most learners rounded to the nearest ten correctly.',
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 300));
+      expect(stream.events.filter((e) => e.event === 'notification')).toHaveLength(2);
+    } finally {
+      stream.close();
+    }
+  });
+
   it('does not push drafts', async () => {
     const w = await world();
     const stream = await openStream(w.head.token);
