@@ -25,6 +25,23 @@ export const updateTimetableEntryBody = z.object({
   validTo: isoDate.optional(),
 });
 
+/** One lesson slot read from an uploaded timetable file (the browser turns the file into rows). */
+export const timetableImportRow = z.object({
+  className: z.string().trim().min(1).max(40),
+  subject: z.string().trim().min(1).max(100),
+  weekday: z.number().int().min(1).max(5),
+  startTime: timeOfDay,
+  endTime: timeOfDay,
+});
+export type TimetableImportRow = z.infer<typeof timetableImportRow>;
+
+export const importTimetableBody = z.object({
+  termId: uuid,
+  rows: z.array(timetableImportRow).min(1).max(2000),
+  /** Check only: nothing is saved, every row comes back with its match or problem. */
+  dryRun: z.boolean().default(true),
+});
+
 export const listTimetableQuery = z.object({
   termId: uuid.optional(),
   classId: uuid.optional(),

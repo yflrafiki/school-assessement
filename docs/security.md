@@ -38,7 +38,7 @@ What the system protects: teachers' and headmasters' accounts, lesson records, a
 
 ## Requests and headers
 
-- Content Security Policy: `default-src 'self'`, `script-src 'self'`, `style-src 'self' 'unsafe-inline'` (React sets element styles inline), `img-src 'self' data:`, `font-src 'self' data:`, `connect-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and `upgrade-insecure-requests` in production. In production the API serves the web app itself (`WEB_DIST_DIR`), so the pages get this policy too.
+- Content Security Policy: `default-src 'self'`, `script-src 'self'`, `style-src 'self' 'unsafe-inline'` (React sets element styles inline), `img-src 'self' data:`, `font-src 'self' data:`, `connect-src 'self'`, `worker-src 'self' blob:` (reading an uploaded Excel timetable unzips it in a worker the page's own script builds from a blob), `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and `upgrade-insecure-requests` in production. In production the API serves the web app itself (`WEB_DIST_DIR`), so the pages get this policy too.
 - Also sent: HSTS for two years, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and a `Permissions-Policy` that disables camera, microphone, location, payment and USB. `x-powered-by` is removed.
 - Every API response carries `Cache-Control: no-store`.
 - Input is validated with the shared Zod schemas, and unknown fields are dropped. Malformed ids return `NOT_FOUND`. Every write must be JSON, except the one PDF upload route, which accepts only `application/pdf` and checks the file signature.

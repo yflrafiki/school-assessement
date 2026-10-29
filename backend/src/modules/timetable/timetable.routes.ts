@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import {
+  importTimetableBody,
   listTimetableQuery,
   publishTimetableBody,
   timetableEntryBody,
@@ -58,6 +59,20 @@ timetableRouter.delete(
   async (req, res) => {
     await service.deleteEntry(actor(req), idParam(req));
     res.status(204).end();
+  },
+);
+
+timetableRouter.post(
+  '/timetable/import',
+  requirePermission('timetable.manage'),
+  async (req, res) => {
+    const input = body(req, importTimetableBody);
+    const result = await service.importTimetable(actor(req), input);
+    const failed = result.rows.some((r) => r.error);
+    // Problems come back row by row (always 200), so the page can show them next to each row.
+    res.json({
+      data: { ...result, dryRun: input.dryRun || failed, saved: !input.dryRun && !failed },
+    });
   },
 );
 

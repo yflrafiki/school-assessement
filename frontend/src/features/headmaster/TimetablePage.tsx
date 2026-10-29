@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FiTrash2 } from 'react-icons/fi';
+import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { WEEKDAYS } from '@school/shared';
 import { api, type One } from '../../lib/api';
 import { weekdayLabel } from '../../lib/format';
@@ -9,10 +9,11 @@ import { useUrlState } from '../../lib/useUrlState';
 import { PageHeader, Section } from '../../components/PageHeader';
 import { FilterBar, FilterSelect } from '../../components/Filters';
 import { Alert, EmptyState, QueryView } from '../../components/States';
-import { Drawer } from '../../components/Overlays';
+import { ConfirmDialog, Drawer } from '../../components/Overlays';
 import { classOptions, useClasses, useTerms } from '../reference';
 import type { Assignment, TimetableEntry } from '../../types/api';
 import { StartRecordingFrom } from './StartRecordingFrom';
+import { TimetableUpload } from './TimetableUpload';
 
 interface PublishResult {
   dryRun: boolean;
@@ -48,6 +49,8 @@ export function TimetablePage() {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<PublishResult | null>(null);
   const [published, setPublished] = useState<string | null>(null);
+  const [editing, setEditing] = useState<TimetableEntry | null>(null);
+  const [slot, setSlot] = useState({ weekday: '1', startTime: '', endTime: '' });
 
   const entries = useQuery({
     queryKey: ['timetable', termId, classId],
@@ -106,7 +109,7 @@ export function TimetablePage() {
     <>
       <PageHeader
         title="Timetable"
-        description="Weekly slots per class. Changes take effect when you publish, which generates lessons for every school day of the term."
+        description="Upload the timetable or add slots one by one, then publish: publishing creates the lessons for every school day of the term."
         actions={
           <button
             type="button"
@@ -123,6 +126,7 @@ export function TimetablePage() {
           <Alert tone="ok">{published}</Alert>
         </div>
       )}
+      {termId && <TimetableUpload termId={termId} onSaved={setPublished} />}
       {term && <StartRecordingFrom key={term.id} term={term} />}
       <Section>
         <FilterBar>
@@ -249,14 +253,31 @@ export function TimetablePage() {
                                   {e.assignment.teacher.fullName}
                                 </span>
                               </span>
-                              <button
-                                type="button"
-                                className="btn-ghost h-7 px-1.5"
-                                aria-label={`Remove ${e.assignment.subject.name} on ${weekdayLabel(d)} at ${e.startTime}`}
-                                onClick={() => remove.mutate(e.id)}
-                              >
-                                <FiTrash2 aria-hidden />
-                              </button>
+                              <span className="flex shrink-0">
+                                <button
+                                  type="button"
+                                  className="btn-ghost h-7 px-1.5"
+                                  aria-label={`Edit ${e.assignment.subject.name} on ${weekdayLabel(d)} at ${e.startTime}`}
+                                  onClick={() => {
+                                    setSlot({
+                                      weekday: String(e.weekday),
+                                      startTime: e.startTime,
+                                      endTime: e.endTime,
+                                    });
+                                    setEditing(e);
+                                  }}
+                                >
+                                  <FiEdit2 aria-hidden />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-ghost h-7 px-1.5"
+                                  aria-label={`Remove ${e.assignment.subject.name} on ${weekdayLabel(d)} at ${e.startTime}`}
+                                  onClick={() => remove.mutate(e.id)}
+                                >
+                                  <FiTrash2 aria-hidden />
+                                </button>
+                              </span>
                             </li>
                           ))}
                           {!(byDay.get(d) ?? []).length && (
@@ -282,6 +303,64 @@ export function TimetablePage() {
           />
         )}
       </Section>
+
+      <ConfirmDialog
+        open={!!editing}
+        title={
+          editing
+            ? `Edit ${editing.assignment.subject.name}, ${editing.assignment.schoolClass.name}`
+            : ''
+        }
+        body="The new day and times apply when you publish the timetable. Lessons already recorded keep their history."
+        confirmLabel="Save"
+        onClose={() => setEditing(null)}
+        onConfirm={async () => {
+          await api.patch(`/timetable-entries/${editing?.id}`, {
+            weekday: Number(slot.weekday),
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          });
+          setPublished('Slot updated. Press "Preview and publish" to apply it to the lessons.');
+          refresh();
+        }}
+      >
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <label>
+            <span className="label">Day</span>
+            <select
+              className="input"
+              value={slot.weekday}
+              onChange={(e) => setSlot({ ...slot, weekday: e.target.value })}
+            >
+              {WEEKDAYS.map((d) => (
+                <option key={d} value={d}>
+                  {weekdayLabel(d)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="label">Start</span>
+            <input
+              type="time"
+              className="input"
+              required
+              value={slot.startTime}
+              onChange={(e) => setSlot({ ...slot, startTime: e.target.value })}
+            />
+          </label>
+          <label>
+            <span className="label">End</span>
+            <input
+              type="time"
+              className="input"
+              required
+              value={slot.endTime}
+              onChange={(e) => setSlot({ ...slot, endTime: e.target.value })}
+            />
+          </label>
+        </div>
+      </ConfirmDialog>
 
       <Drawer
         open={!!preview}

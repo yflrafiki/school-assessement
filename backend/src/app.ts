@@ -56,6 +56,9 @@ export function createApp() {
           imgSrc: ["'self'", 'data:'],
           fontSrc: ["'self'", 'data:'],
           connectSrc: ["'self'"],
+          // Reading an uploaded Excel timetable unzips it in a worker built from a blob. Only
+          // this site's own scripts (script-src 'self') can create one.
+          workerSrc: ["'self'", 'blob:'],
           objectSrc: ["'none'"],
           baseUri: ["'self'"],
           formAction: ["'self'"],

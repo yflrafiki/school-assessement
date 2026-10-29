@@ -23,6 +23,7 @@ describe('security headers', () => {
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("worker-src 'self' blob:");
     // No third-party origins anywhere in the policy.
     expect(csp).not.toMatch(/https?:|\*/);
     expect(res.headers['x-powered-by']).toBeUndefined();

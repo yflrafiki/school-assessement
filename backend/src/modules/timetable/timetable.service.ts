@@ -1,4 +1,9 @@
-import { minutesToTime, timeToMinutes, type TimetableEntryBody } from '@school/shared';
+import {
+  minutesToTime,
+  timeToMinutes,
+  type TimetableEntryBody,
+  type TimetableImportRow,
+} from '@school/shared';
 import { prisma, type Tx } from '../../lib/db.js';
 import { AppError, isExclusionViolation, notFound } from '../../lib/errors.js';
 import { fromDbDate, toDbDate } from '../../lib/dates.js';
@@ -251,6 +256,179 @@ export async function deleteEntry(actor: Actor, id: string) {
 class DryRunRollback extends Error {
   constructor(readonly results: SyncResult[]) {
     super('dry run');
+  }
+}
+
+// ---------- Uploading a whole timetable ----------
+
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** Short forms headmasters write on timetables, mapped to national subject codes. */
+const SUBJECT_SHORT_FORMS: Record<string, string> = {
+  english: 'ENG',
+  englishlanguage: 'ENG',
+  eng: 'ENG',
+  maths: 'MATH',
+  math: 'MATH',
+  mathematics: 'MATH',
+  science: 'SCI',
+  sci: 'SCI',
+  integratedscience: 'SCI',
+  computing: 'COMP',
+  ict: 'COMP',
+  comp: 'COMP',
+  socialstudies: 'SOC',
+  social: 'SOC',
+  soc: 'SOC',
+  rme: 'RME',
+  religiousandmoraleducation: 'RME',
+  cad: 'CAD',
+  creativearts: 'CAD',
+  creativeartsanddesign: 'CAD',
+  careertechnology: 'CT',
+  careertech: 'CT',
+  ct: 'CT',
+  pretech: 'CT',
+  french: 'FRE',
+  fre: 'FRE',
+  ghanaianlanguage: 'GHL',
+  ghanaianlanguages: 'GHL',
+  ghl: 'GHL',
+  twi: 'GHL',
+  asantetwi: 'GHL',
+  akuapemtwi: 'GHL',
+  fante: 'GHL',
+  ga: 'GHL',
+  ewe: 'GHL',
+  dagbani: 'GHL',
+  nzema: 'GHL',
+};
+
+export interface ImportedRow extends TimetableImportRow {
+  row: number;
+  teacher?: string;
+  matchedSubject?: string;
+  error?: string;
+}
+
+class ImportRollback extends Error {
+  constructor(readonly result: { rows: ImportedRow[]; created: number; replaced: number }) {
+    super('timetable import rolled back');
+  }
+}
+
+/**
+ * Saves a whole uploaded timetable in one transaction. Each row is matched to the class's
+ * assigned subject (and so its teacher). The classes in the file get exactly the file's slots:
+ * their existing slots are replaced, so uploading a corrected file again is safe. Clashes for a
+ * teacher or a class are reported per row. Nothing is saved unless every row is fine, and a
+ * dry run (the default) only reports. Lessons are created when the timetable is published.
+ */
+export async function importTimetable(
+  actor: Actor,
+  input: { termId: string; rows: TimetableImportRow[]; dryRun: boolean },
+) {
+  const term = await prisma.term.findFirst({
+    where: { id: input.termId, schoolId: actor.schoolId },
+  });
+  if (!term) throw notFound('Term');
+
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const classes = await tx.schoolClass.findMany({ where: { schoolId: actor.schoolId } });
+        const classByName = new Map(classes.map((c) => [squash(c.name), c]));
+        const assignments = await tx.teachingAssignment.findMany({
+          where: { schoolId: actor.schoolId, termId: term.id, isActive: true },
+          include: {
+            subject: { include: { parent: { select: { code: true } } } },
+            teacherProfile: { include: { user: { select: { fullName: true } } } },
+          },
+        });
+
+        const out: ImportedRow[] = input.rows.map((r, i) => ({ ...r, row: i + 1 }));
+        const matched: { row: ImportedRow; assignmentId: string }[] = [];
+        for (const r of out) {
+          if (timeToMinutes(r.startTime) >= timeToMinutes(r.endTime)) {
+            r.error = 'The end time must be after the start time';
+            continue;
+          }
+          const cls = classByName.get(squash(r.className));
+          if (!cls) {
+            r.error = `There is no class called "${r.className}". Add it in Settings → Classes, or correct the name.`;
+            continue;
+          }
+          const own = assignments.filter((a) => a.classId === cls.id);
+          const wanted = squash(r.subject);
+          const code = SUBJECT_SHORT_FORMS[wanted];
+          const hits = own.filter((a) => squash(a.subject.name) === wanted);
+          const byCode = hits.length
+            ? hits
+            : own.filter(
+                (a) => code && (a.subject.code === code || a.subject.parent?.code === code),
+              );
+          if (byCode.length !== 1) {
+            r.error = byCode.length
+              ? `"${r.subject}" matches more than one subject of ${cls.name}. Use the full subject name.`
+              : `No teacher is assigned to "${r.subject}" for ${cls.name}. Assign one under Subjects and classes, or correct the subject.`;
+            continue;
+          }
+          const a = byCode[0]!;
+          r.className = cls.name;
+          r.matchedSubject = a.subject.name;
+          r.teacher = a.teacherProfile.user.fullName;
+          matched.push({ row: r, assignmentId: a.id });
+        }
+
+        // The classes in the file get exactly the file's slots.
+        const classIds = [
+          ...new Set(matched.map((m) => assignments.find((a) => a.id === m.assignmentId)!.classId)),
+        ];
+        const { count: replaced } = await tx.timetableEntry.updateMany({
+          where: {
+            schoolId: actor.schoolId,
+            deletedAt: null,
+            classId: { in: classIds },
+            assignment: { termId: term.id },
+          },
+          data: { deletedAt: new Date() },
+        });
+
+        let created = 0;
+        for (const m of matched) {
+          try {
+            await insertEntry(tx, actor, {
+              assignmentId: m.assignmentId,
+              weekday: m.row.weekday,
+              startTime: m.row.startTime,
+              endTime: m.row.endTime,
+            });
+            created += 1;
+          } catch (err) {
+            // A clash is found by a read before the insert, so the transaction stays usable.
+            if (err instanceof AppError && err.code === 'CONFLICT') m.row.error = err.message;
+            else throw err;
+          }
+        }
+
+        const result = { rows: out, created, replaced };
+        if (input.dryRun || out.some((r) => r.error)) throw new ImportRollback(result);
+        await audit(tx, {
+          schoolId: actor.schoolId,
+          actorId: actor.userId,
+          action: 'timetable.imported',
+          entityType: 'Term',
+          entityId: term.id,
+          metadata: { rows: out.length, created, replaced, classes: classIds.length },
+          requestId: actor.requestId,
+        });
+        return result;
+      },
+      { timeout: 120_000 },
+    );
+  } catch (err) {
+    if (!(err instanceof ImportRollback)) throw err;
+    return err.result;
   }
 }
 
