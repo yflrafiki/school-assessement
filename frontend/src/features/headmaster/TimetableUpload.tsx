@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FiCheck, FiDownload, FiTrash2, FiUpload } from 'react-icons/fi';
 import { WEEKDAYS } from '@school/shared';
@@ -133,16 +134,26 @@ export function TimetableUpload({
   }
 
   const problems = [...checked.values()].filter((r) => r.error).length;
+  // The usual first-time problem: the teachers are not set up yet. Say so once, by class,
+  // instead of on every row.
+  const unassigned = new Map<string, Set<string>>();
+  for (const r of checked.values()) {
+    const m = r.error?.match(/^No teacher is assigned to "(.+)" for (.+?)\./);
+    if (m) unassigned.set(m[2]!, (unassigned.get(m[2]!) ?? new Set()).add(m[1]!));
+  }
+  const unassignedRows = [...checked.values()].filter((r) =>
+    r.error?.startsWith('No teacher is assigned'),
+  ).length;
   const blank = draft?.filter(incomplete).length ?? 0;
 
   return (
     <Section title="Upload the timetable" className="mb-5">
       <div className="space-y-3 px-4 py-4 text-sm">
         <p className="text-muted">
-          Upload the whole school timetable as an Excel or CSV file: one row per class and day, with
-          the period times as column headings (for example 8:00-8:40) and the subject in each cell.
-          A list with Class, Subject, Day, Start and End columns works too. You can change any day
-          or time before saving. Uploading a class again replaces its slots.
+          Upload the whole school timetable as a PDF, Excel or CSV file: one row per class and day,
+          with the period times as column headings (for example 8:00-8:40) and the subject in each
+          cell. A list with Class, Subject, Day, Start and End columns works too. You can change any
+          day or time before saving. Uploading a class again replaces its slots.
         </p>
         <div className="flex flex-wrap gap-2">
           <input
@@ -217,6 +228,37 @@ export function TimetableUpload({
               </button>
             </div>
           </div>
+          {unassigned.size > 0 && (
+            <div className="px-4 pb-3">
+              <Alert tone="warn">
+                <p>
+                  {unassignedRows === problems
+                    ? 'All of these rows are'
+                    : `${unassignedRows} rows are`}{' '}
+                  waiting for teachers: each subject needs a teacher assigned for the class before
+                  its lessons can go on the timetable.
+                </p>
+                <ul className="mt-1 list-disc pl-5">
+                  {[...unassigned].map(([cls, subjects]) => (
+                    <li key={cls}>
+                      <strong>{cls}</strong>: {[...subjects].join(', ')}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1">
+                  Add the teachers under{' '}
+                  <Link to="/h/teachers" className="font-medium underline">
+                    Teachers
+                  </Link>{' '}
+                  (or assign existing ones under{' '}
+                  <Link to="/h/assignments" className="font-medium underline">
+                    Subjects and classes
+                  </Link>
+                  ), then upload this file again. The file reads the same way every time.
+                </p>
+              </Alert>
+            </div>
+          )}
           {blank > 0 && (
             <div className="px-4 pb-3">
               <Alert tone="warn">

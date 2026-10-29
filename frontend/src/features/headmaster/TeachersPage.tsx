@@ -364,6 +364,30 @@ function AddTeacherDrawer({
                 </select>
                 <button
                   type="button"
+                  className="btn-ghost whitespace-nowrap px-2 text-xs"
+                  title="The same subject in every class, for a teacher who teaches it in Form 1 to Form 3"
+                  onClick={() => {
+                    const subjectId = form.getValues(`assignments.${i}.subjectId`);
+                    if (!subjectId) {
+                      form.setError(`assignments.${i}.subjectId`, { message: 'Choose a subject' });
+                      return;
+                    }
+                    const taken = new Set(
+                      (form.getValues('assignments') ?? [])
+                        .filter((a, j) => j !== i && a.subjectId === subjectId)
+                        .map((a) => a.classId),
+                    );
+                    const every = (classes.data ?? [])
+                      .filter((c) => c.isActive && !taken.has(c.id))
+                      .map((c) => ({ subjectId, classId: c.id }));
+                    pairs.remove(i);
+                    pairs.append(every);
+                  }}
+                >
+                  All classes
+                </button>
+                <button
+                  type="button"
                   className="btn-ghost px-2"
                   onClick={() => pairs.remove(i)}
                   aria-label="Remove this subject and class"
