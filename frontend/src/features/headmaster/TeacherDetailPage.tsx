@@ -167,7 +167,7 @@ export function TeacherDetailPage() {
             </Section>
 
             <Section
-              title="Assignments"
+              title="Subjects and classes"
               className="lg:col-span-2"
               actions={
                 <Link to={`/h/assignments?teacherProfileId=${t.id}`} className="link text-sm">
@@ -195,7 +195,7 @@ export function TeacherDetailPage() {
                 </ul>
               ) : (
                 <EmptyState
-                  title="No assignments"
+                  title="No subjects given yet"
                   action={
                     <Link to={`/h/assignments?teacherProfileId=${t.id}`} className="btn-secondary">
                       Assign subjects

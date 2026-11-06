@@ -74,7 +74,7 @@ export function StartRecordingFrom({ term }: { term: Term }) {
             aria-busy={waive.isPending}
             onClick={() => waive.mutate()}
           >
-            {waive.isPending ? 'Waiving…' : 'Waive earlier lessons'}
+            {waive.isPending ? 'Saving…' : 'Start recording from this day'}
           </button>
         </div>
         {done && <Alert tone="ok">{done}</Alert>}

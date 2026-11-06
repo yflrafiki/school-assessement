@@ -83,6 +83,8 @@ export function SetupGuide() {
   const query = useQuery({
     queryKey: ['setup-status'],
     queryFn: () => api.get<One<SetupStatus>>('/setup-status').then((r) => r.data),
+    // Steps are done on other pages; coming back here should always show the latest.
+    refetchOnMount: 'always',
   });
   const status = query.data;
   if (!status || status.complete) return null;
@@ -100,8 +102,8 @@ export function SetupGuide() {
       }
     >
       <p className="px-4 pt-3 text-sm text-muted">
-        Teachers can record lessons once these steps are done. Work from the top; each step
-        ticks itself off when it is complete.{' '}
+        Teachers can record lessons once these steps are done. Work from the top; each step ticks
+        itself off when it is complete.{' '}
         <Link to="/h/help" className="link">
           How the system works
         </Link>

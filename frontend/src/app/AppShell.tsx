@@ -9,6 +9,7 @@ import {
   FiCalendar,
   FiClipboard,
   FiGrid,
+  FiHelpCircle,
   FiHome,
   FiLayers,
   FiLogOut,
@@ -48,6 +49,7 @@ const TEACHER_NAV: NavItem[] = [
   { to: '/t/progress', label: 'Weekly progress', icon: FiTrendingUp },
   { to: '/t/notifications', label: 'Notifications', icon: FiBell },
   { to: '/t/profile', label: 'Profile', icon: FiUser },
+  { to: '/t/help', label: 'Help', icon: FiHelpCircle },
 ];
 
 const HEADMASTER_NAV: NavItem[] = [
@@ -93,6 +95,7 @@ const HEADMASTER_NAV: NavItem[] = [
   { to: '/h/notifications', label: 'Notifications', icon: FiBell },
   { to: '/h/settings', label: 'Settings', icon: FiSettings, permission: 'school.setup' },
   { to: '/h/profile', label: 'Profile', icon: FiUser },
+  { to: '/h/help', label: 'Help', icon: FiHelpCircle },
 ];
 
 export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {

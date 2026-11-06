@@ -5,7 +5,8 @@ import { formatDate, formatShortDate, percent } from '../../lib/format';
 import { PageHeader, Section } from '../../components/PageHeader';
 import { EmptyState, QueryView } from '../../components/States';
 import { HeadOverviewSkeleton } from '../../components/Skeleton';
-import { useCurrentUser } from '../auth/useMe';
+import { useCan, useCurrentUser } from '../auth/useMe';
+import { SetupGuide } from './SetupGuide';
 
 interface HeadDashboard {
   date: string;
@@ -56,6 +57,7 @@ function Figure({
 
 export function HeadOverview() {
   const me = useCurrentUser();
+  const canSetup = useCan('school.setup');
   const query = useQuery({
     queryKey: ['dashboard', 'headmaster'],
     queryFn: () => api.get<One<HeadDashboard>>('/dashboard/headmaster').then((r) => r.data),
@@ -72,9 +74,12 @@ export function HeadOverview() {
             : me.school.name
         }
       />
+      {canSetup && <SetupGuide />}
       <QueryView query={query} skeleton={<HeadOverviewSkeleton />}>
         {(d) => {
           if (!d.term) {
+            // The setup checklist above already says what to do first.
+            if (canSetup) return null;
             return (
               <Section>
                 <EmptyState

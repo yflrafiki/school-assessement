@@ -32,7 +32,7 @@ export function SettingsPage() {
     <>
       <PageHeader
         title="Settings"
-        description="School year, classes, languages and calendar. Changes that affect lessons re-pace them at once and are audited."
+        description="Term dates, week dates, classes, languages, holidays and absences. Changes here update the lessons at once, and every change is kept in the history."
       />
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line" role="tablist">
         {TABS.map((t) => (

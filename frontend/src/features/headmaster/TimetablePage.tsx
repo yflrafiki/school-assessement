@@ -385,7 +385,7 @@ export function TimetablePage() {
               {publish.isPending
                 ? 'Publishing…'
                 : preview?.assignments.some((a) => a.needsConfirmation)
-                  ? 'Confirm re-pacing and publish'
+                  ? 'Confirm and publish'
                   : 'Publish'}
             </button>
           </>
@@ -394,23 +394,25 @@ export function TimetablePage() {
         {preview && (
           <div className="space-y-3">
             <p className="text-sm text-muted">
-              Lessons are placed onto curriculum weeks in date order. Check for shortfalls before
-              publishing.
+              Publishing creates every lesson of the term from the timetable. Each class&apos;s
+              lessons cover the scheme&apos;s weeks in order. &quot;Too few lessons&quot; means the
+              timetable has fewer lessons than the scheme needs for that subject this term.
             </p>
             {preview.assignments.some((a) => a.needsConfirmation) && (
               <Alert tone="warn">
-                Some class subjects change their weekly lesson count after records were submitted.
-                Their remaining lessons will be re-paced.
+                Some subjects now have a different number of lessons a week, and teachers have
+                already recorded some of them. Their remaining lessons will be matched to the
+                scheme&apos;s weeks again; records already submitted are kept.
               </Alert>
             )}
             <div className="overflow-x-auto">
               <table className="table min-w-[28rem]">
                 <thead>
                   <tr>
-                    <th>Class subject</th>
-                    <th>Per week</th>
+                    <th>Subject and class</th>
+                    <th>Lessons a week</th>
                     <th>New lessons</th>
-                    <th>Shortfall</th>
+                    <th>Too few lessons?</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -431,10 +433,10 @@ export function TimetablePage() {
                       </td>
                       <td className={a.shortfall ? 'text-warn' : 'text-muted'}>
                         {a.perWeek === 0
-                          ? 'No slots'
+                          ? 'Not on the timetable'
                           : a.shortfall
                             ? `${a.shortfall} lessons short`
-                            : 'None'}
+                            : 'No'}
                       </td>
                     </tr>
                   ))}

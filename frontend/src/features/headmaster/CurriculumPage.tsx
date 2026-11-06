@@ -335,7 +335,7 @@ export function CurriculumPage() {
       <ConfirmDialog
         open={!!publishing}
         title="Publish this scheme?"
-        body="It becomes the scheme for the term. Any earlier published version is archived, and every class subject is re-paced. Records already submitted keep their topics."
+        body="It becomes the term's scheme and replaces any earlier one. Every class's lessons are matched to its weeks again. Records already submitted keep their topics."
         confirmLabel="Publish"
         onClose={() => setPublishing(null)}
         onConfirm={async () => {

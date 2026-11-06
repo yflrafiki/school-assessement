@@ -47,7 +47,7 @@ export function MySubjects() {
                 />
               ) : (
                 <EmptyState
-                  title="No assignments yet"
+                  title="No subjects given to you yet"
                   description="Ask your headmaster to assign your subjects and classes."
                 />
               )

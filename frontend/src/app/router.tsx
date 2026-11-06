@@ -8,6 +8,7 @@ import {
   ResetPasswordPage,
 } from '../features/auth/AuthPages';
 import { ProfilePage } from '../features/auth/ProfilePage';
+import { HelpPage } from '../features/help/HelpPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { TeacherOverview } from '../features/teacher/TeacherOverview';
 import { MySubjects } from '../features/teacher/MySubjects';
@@ -88,6 +89,7 @@ export const router = createBrowserRouter([
           { path: 'progress', element: <WeeklyProgress /> },
           { path: 'notifications', element: <NotificationsPage area="teacher" /> },
           { path: 'profile', element: <ProfilePage /> },
+          { path: 'help', element: <HelpPage area="teacher" /> },
           { path: '*', element: <NotFound /> },
         ],
       },
@@ -190,6 +192,7 @@ export const router = createBrowserRouter([
             ),
           },
           { path: 'profile', element: <ProfilePage /> },
+          { path: 'help', element: <HelpPage area="headmaster" /> },
           { path: '*', element: <NotFound /> },
         ],
       },

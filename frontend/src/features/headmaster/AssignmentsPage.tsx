@@ -80,7 +80,7 @@ export function AssignmentsPage() {
     <>
       <PageHeader
         title="Subjects and classes"
-        description="One teacher per subject and class each term. Weekly lessons come from the timetable."
+        description="Say which teacher teaches each subject in each class this term. A teacher only sees, and records, the subjects given to them here."
         actions={
           <button type="button" className="btn-secondary" onClick={() => setCarry(true)}>
             Copy from another term
@@ -280,8 +280,8 @@ export function AssignmentsPage() {
                 />
               ) : (
                 <EmptyState
-                  title="No assignments for this term"
-                  description="Assign a teacher to each subject and class using the form above."
+                  title="No subjects given to teachers for this term"
+                  description="Choose a teacher, a subject and a class in the form above, then press Assign. Do this for every subject each class takes."
                 />
               )
             }
@@ -343,8 +343,8 @@ export function AssignmentsPage() {
 
       <ConfirmDialog
         open={carry}
-        title="Copy assignments from another term"
-        body="Active assignments of the chosen term are copied into the selected term. Pairs already assigned are skipped."
+        title="Copy teachers' subjects from another term"
+        body="Every teacher keeps the same subjects and classes as in the term you choose. Any already set for this term are left as they are."
         confirmLabel="Copy"
         onClose={() => setCarry(false)}
         onConfirm={async () => {
@@ -352,7 +352,9 @@ export function AssignmentsPage() {
             '/assignments/carry-forward',
             { fromTermId: carryFrom, toTermId: termId },
           );
-          setNotice(`Copied ${res.data.created} assignments, skipped ${res.data.skipped}.`);
+          setNotice(
+            `Copied ${res.data.created} teacher subjects. ${res.data.skipped} were already set for this term.`,
+          );
           refresh();
         }}
       >
