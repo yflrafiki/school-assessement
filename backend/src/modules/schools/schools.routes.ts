@@ -18,6 +18,7 @@ import {
 import { auth, body, idParam, query } from '../../lib/http.js';
 import { requirePermission } from '../../middleware/requireRole.js';
 import * as service from './schools.service.js';
+import { setupStatus } from './setupStatus.js';
 
 export const schoolsRouter = Router();
 
@@ -57,6 +58,11 @@ schoolsRouter.get('/calendar-days', async (req, res) => {
 schoolsRouter.get('/week-policies', async (req, res) => {
   const { termId } = query(req, z.object({ termId: uuid.optional() }));
   res.json({ data: await service.listWeekPolicies(auth(req).schoolId, termId) });
+});
+
+// The headmaster's setup checklist on the overview.
+schoolsRouter.get('/setup-status', setup, async (req, res) => {
+  res.json({ data: await setupStatus(auth(req).schoolId) });
 });
 
 schoolsRouter.post('/academic-years', setup, async (req, res) => {

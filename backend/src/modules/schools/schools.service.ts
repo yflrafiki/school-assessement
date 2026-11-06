@@ -14,7 +14,11 @@ import { prisma } from '../../lib/db.js';
 import { AppError, conflict, isUniqueViolation, notFound, validation } from '../../lib/errors.js';
 import { fromDbDate, toDbDate } from '../../lib/dates.js';
 import { audit } from '../../lib/audit.js';
-import { syncSchoolAssignments } from '../lessons/lessons.service.js';
+import {
+  lockAssignmentsInOrder,
+  syncAssignment,
+  syncSchoolAssignments,
+} from '../lessons/lessons.service.js';
 
 interface Actor {
   schoolId: string;
@@ -239,36 +243,111 @@ export async function createTerm(actor: Actor, input: z.infer<typeof createTermB
   }
 }
 
+/**
+ * Renames a term, makes it current, or moves its dates. When the dates move, the week
+ * windows must still fit (shrinking past a week is refused with the weeks named), timetable
+ * slots that ran for the whole term follow the new dates, and lessons are regenerated:
+ * new days get lessons, and untouched lessons outside the new dates go. Recorded lessons
+ * are never removed.
+ */
 export async function updateTerm(
   actor: Actor,
   termId: string,
   input: z.infer<typeof updateTermBody>,
 ) {
-  return prisma.$transaction(async (tx) => {
-    const term = await tx.term.findFirst({ where: { id: termId, schoolId: actor.schoolId } });
-    if (!term) throw notFound('Term');
-    if (input.isCurrent) {
-      await tx.term.updateMany({
-        where: { schoolId: actor.schoolId, isCurrent: true },
-        data: { isCurrent: false },
+  return prisma.$transaction(
+    async (tx) => {
+      const term = await tx.term.findFirst({
+        where: { id: termId, schoolId: actor.schoolId },
+        include: { academicYear: true },
       });
-    }
-    const updated = await tx.term.update({
-      where: { id: termId },
-      data: {
-        ...(input.name ? { name: input.name } : {}),
-        ...(input.isCurrent !== undefined ? { isCurrent: input.isCurrent } : {}),
-      },
-    });
-    await audit(tx, {
-      ...auditFor(actor),
-      action: 'term.updated',
-      entityType: 'Term',
-      entityId: termId,
-      metadata: input,
-    });
-    return termDto(updated);
-  });
+      if (!term) throw notFound('Term');
+      const oldStart = fromDbDate(term.startDate);
+      const oldEnd = fromDbDate(term.endDate);
+      const start = input.startDate ?? oldStart;
+      const end = input.endDate ?? oldEnd;
+      const datesChanged = start !== oldStart || end !== oldEnd;
+      if (datesChanged) {
+        if (start > end) throw validation({ endDate: ['The term must end on or after it starts'] });
+        if (
+          start < fromDbDate(term.academicYear.startDate) ||
+          end > fromDbDate(term.academicYear.endDate)
+        ) {
+          throw validation({
+            endDate: [
+              `The term must fall within the academic year (${fromDbDate(term.academicYear.startDate)} to ${fromDbDate(term.academicYear.endDate)})`,
+            ],
+          });
+        }
+        const outside = await tx.termWeek.findMany({
+          where: {
+            termId,
+            OR: [{ startDate: { lt: toDbDate(start) } }, { endDate: { gt: toDbDate(end) } }],
+          },
+          orderBy: { weekNumber: 'asc' },
+        });
+        if (outside.length) {
+          throw validation({
+            endDate: [
+              `Week${outside.length > 1 ? 's' : ''} ${outside.map((w) => w.weekNumber).join(', ')} would fall outside these dates. Change the weeks under Term weeks first, or choose dates that include them.`,
+            ],
+          });
+        }
+      }
+      if (input.isCurrent) {
+        await tx.term.updateMany({
+          where: { schoolId: actor.schoolId, isCurrent: true },
+          data: { isCurrent: false },
+        });
+      }
+      const updated = await tx.term.update({
+        where: { id: termId },
+        data: {
+          ...(input.name ? { name: input.name } : {}),
+          ...(input.isCurrent !== undefined ? { isCurrent: input.isCurrent } : {}),
+          ...(datesChanged ? { startDate: toDbDate(start), endDate: toDbDate(end) } : {}),
+        },
+      });
+      if (datesChanged) {
+        // Slots that ran for the whole term keep doing so; slots with their own dates are clipped.
+        const assignments = await tx.teachingAssignment.findMany({
+          where: { termId },
+          select: { id: true },
+        });
+        const ids = assignments.map((a) => a.id);
+        await lockAssignmentsInOrder(tx, actor.schoolId, ids);
+        const slots = { assignmentId: { in: ids }, deletedAt: null };
+        await tx.timetableEntry.updateMany({
+          where: { ...slots, validFrom: toDbDate(oldStart) },
+          data: { validFrom: toDbDate(start) },
+        });
+        await tx.timetableEntry.updateMany({
+          where: { ...slots, validTo: toDbDate(oldEnd) },
+          data: { validTo: toDbDate(end) },
+        });
+        await tx.timetableEntry.updateMany({
+          where: { ...slots, validFrom: { lt: toDbDate(start) } },
+          data: { validFrom: toDbDate(start) },
+        });
+        await tx.timetableEntry.updateMany({
+          where: { ...slots, validTo: { gt: toDbDate(end) } },
+          data: { validTo: toDbDate(end) },
+        });
+        for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: true });
+      }
+      await audit(tx, {
+        ...auditFor(actor),
+        action: 'term.updated',
+        entityType: 'Term',
+        entityId: termId,
+        metadata: datesChanged
+          ? { ...input, from: { startDate: oldStart, endDate: oldEnd } }
+          : input,
+      });
+      return termDto(updated);
+    },
+    { timeout: 120_000 },
+  );
 }
 
 export async function getTermWeeks(schoolId: string, termId: string) {
@@ -302,13 +381,22 @@ export async function setTermWeeks(
       weeks.forEach((w, i) => {
         if (w.startDate > w.endDate) problems.push(`Week ${w.weekNumber} ends before it starts`);
         if (w.startDate < start || w.endDate > end)
-          problems.push(`Week ${w.weekNumber} falls outside the term`);
+          problems.push(
+            `Week ${w.weekNumber} (${w.startDate} to ${w.endDate}) falls outside the term, which runs from ${start} to ${end}.`,
+          );
         const prev = weeks[i - 1];
         if (prev && prev.weekNumber === w.weekNumber)
           problems.push(`Week ${w.weekNumber} appears twice`);
         if (prev && w.startDate <= prev.endDate)
-          problems.push(`Week ${w.weekNumber} overlaps week ${prev.weekNumber}`);
+          problems.push(
+            `Week ${w.weekNumber} starts on ${w.startDate}, before week ${prev.weekNumber} ends on ${prev.endDate}. Each week must start after the one before it ends.`,
+          );
       });
+      if (weeks.some((w) => w.endDate > end || w.startDate < start)) {
+        problems.push(
+          'If the term really runs longer, change its dates under Settings → Years and terms (Edit dates), then save the weeks again.',
+        );
+      }
       if (problems.length) throw validation({ weeks: problems });
 
       await tx.termWeek.deleteMany({ where: { termId } });

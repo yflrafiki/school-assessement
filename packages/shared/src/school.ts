@@ -36,10 +36,14 @@ export const updateAcademicYearBody = z.object({
     .regex(/^\d{4}\/\d{4}$/, 'Use the form 2026/2027'),
 });
 
-export const updateTermBody = z.object({
-  name: trimmed(1, 60).optional(),
-  isCurrent: z.boolean().optional(),
-});
+export const updateTermBody = z
+  .object({
+    name: trimmed(1, 60).optional(),
+    isCurrent: z.boolean().optional(),
+    startDate: isoDate.optional(),
+    endDate: isoDate.optional(),
+  })
+  .refine((v) => !v.startDate || !v.endDate || v.startDate <= v.endDate, endAfterStartIssue);
 
 export const termWeeksBody = z.object({
   weeks: z

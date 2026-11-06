@@ -213,6 +213,13 @@ function TermsTab() {
     [refKeys.years, refKeys.terms],
   );
   const manage = useManage([refKeys.years, refKeys.terms]);
+  const qc = useQueryClient();
+  const [dates, setDates] = useState<{
+    id: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+  } | null>(null);
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
@@ -286,6 +293,20 @@ function TermsTab() {
                               type="button"
                               className="btn-ghost h-7 px-2 text-xs"
                               onClick={() =>
+                                setDates({
+                                  id: t.id,
+                                  name: `${t.name} ${y.name}`,
+                                  startDate: t.startDate,
+                                  endDate: t.endDate,
+                                })
+                              }
+                            >
+                              Edit dates
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost h-7 px-2 text-xs"
+                              onClick={() =>
                                 manage.rename({
                                   title: 'Rename term',
                                   label: 'Term name',
@@ -326,6 +347,44 @@ function TermsTab() {
           }
         </QueryView>
         {manage.dialogs}
+        <ConfirmDialog
+          open={!!dates}
+          title={`Edit the dates of ${dates?.name ?? 'the term'}`}
+          body="The timetable and lessons follow the new dates: new days get lessons, and lessons outside the term that nobody recorded are removed. Recorded lessons are kept. The term weeks must still fit inside the dates."
+          confirmLabel="Save dates"
+          onClose={() => setDates(null)}
+          onConfirm={async () => {
+            if (!dates) return;
+            await api.patch(`/terms/${dates.id}`, {
+              startDate: dates.startDate,
+              endDate: dates.endDate,
+            });
+            void qc.invalidateQueries();
+          }}
+        >
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <label>
+              <span className="label">First day</span>
+              <input
+                type="date"
+                className="input"
+                required
+                value={dates?.startDate ?? ''}
+                onChange={(e) => dates && setDates({ ...dates, startDate: e.target.value })}
+              />
+            </label>
+            <label>
+              <span className="label">Last day</span>
+              <input
+                type="date"
+                className="input"
+                required
+                value={dates?.endDate ?? ''}
+                onChange={(e) => dates && setDates({ ...dates, endDate: e.target.value })}
+              />
+            </label>
+          </div>
+        </ConfirmDialog>
         {setCurrent.error && (
           <div className="p-4">
             <Alert>{setCurrent.error}</Alert>
@@ -512,16 +571,34 @@ function WeeksTab() {
     [['term-weeks'], refKeys.terms, ['progress'], ['dashboard']],
   );
   const rows = draft ?? weeks.data ?? [];
+  const [fitNote, setFitNote] = useState<string | null>(null);
 
+  /**
+   * Monday-to-Friday weeks from the term's first week, never past its last day. A term that
+   * starts mid-week gets a short week 1; one that ends mid-week gets a short last week.
+   */
   function generate() {
     if (!term) return;
     const n = Number(count) || 14;
-    setDraft(
-      Array.from({ length: n }, (_, i) => ({
+    const weekday = new Date(`${term.startDate}T00:00:00Z`).getUTCDay() || 7;
+    const firstMonday = addDays(term.startDate, 1 - weekday);
+    const out: { weekNumber: number; startDate: string; endDate: string }[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const monday = addDays(firstMonday, i * 7);
+      const start = monday < term.startDate ? term.startDate : monday;
+      if (start > term.endDate) break;
+      const friday = addDays(monday, 4);
+      out.push({
         weekNumber: i + 1,
-        startDate: addDays(term.startDate, i * 7),
-        endDate: addDays(term.startDate, i * 7 + 4),
-      })),
+        startDate: start,
+        endDate: friday > term.endDate ? term.endDate : friday,
+      });
+    }
+    setDraft(out);
+    setFitNote(
+      out.length < n
+        ? `Only ${out.length} weeks fit between ${formatDate(term.startDate)} and ${formatDate(term.endDate)}. If the term runs longer, change its last day under Years and terms (Edit dates), then fill the weeks again.`
+        : null,
     );
   }
 
@@ -550,6 +627,17 @@ function WeeksTab() {
           Fill weekly from term start
         </button>
       </div>
+      {term && (
+        <p className="px-4 pt-3 text-sm">
+          {term.name} runs from <strong>{formatDate(term.startDate)}</strong> to{' '}
+          <strong>{formatDate(term.endDate)}</strong>. Every week must fall inside these dates.
+        </p>
+      )}
+      {fitNote && (
+        <div className="px-4 pt-3">
+          <Alert tone="warn">{fitNote}</Alert>
+        </div>
+      )}
       <p className="px-4 pt-3 text-sm text-muted">
         Week windows tell the system which calendar dates belong to each week, for example the Basic
         9 mock week. Week 1 normally starts on the first Monday of term.
@@ -612,14 +700,28 @@ function WeeksTab() {
       )}
       {draft && (
         <div className="flex justify-end gap-2 px-4 py-3">
-          <button type="button" className="btn-secondary" onClick={() => setDraft(null)}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setDraft(null);
+              setFitNote(null);
+            }}
+          >
             Discard
           </button>
           <button
             type="button"
             className="btn-primary"
             disabled={save.isPending}
-            onClick={() => save.mutate(draft, { onSuccess: () => setDraft(null) })}
+            onClick={() =>
+              save.mutate(draft, {
+                onSuccess: () => {
+                  setDraft(null);
+                  setFitNote(null);
+                },
+              })
+            }
           >
             Save weeks
           </button>
