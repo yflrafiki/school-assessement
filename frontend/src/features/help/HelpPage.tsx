@@ -36,7 +36,7 @@ const GLOSSARY: [string, string][] = [
   ],
   [
     'Lesson',
-    'One period on the timetable on one day, for example Mathematics, FORM 1, Monday 8:00. The system creates every lesson of the term when the timetable is published.',
+    'One period on the timetable on one day, for example Mathematics, FORM 1, Monday 8:00. The system creates every lesson of the term from the timetable, and updates them as soon as the timetable changes.',
   ],
   [
     'Record (lesson record)',
@@ -57,8 +57,8 @@ const GLOSSARY: [string, string][] = [
     'A lesson that did not happen and does not count, for example on a holiday. The next lessons take over its topics.',
   ],
   [
-    'Publish',
-    'Make something live for teachers. Publishing the timetable creates the lessons; it can be done again after changes.',
+    'Live',
+    'What teachers see. An uploaded scheme of learning and every timetable change are live straight away.',
   ],
   [
     'Deactivate',
@@ -151,8 +151,9 @@ function TeacherHelp() {
         </Topic>
         <Topic title="My classes or lessons are missing">
           <p>
-            The headmaster assigns your subjects and classes and publishes the timetable. Until then
-            nothing appears. Ask them to check <em>Subjects and classes</em> and <em>Timetable</em>.
+            The headmaster gives you your subjects and classes and puts them on the timetable. Until
+            then nothing appears. Ask them to check <em>Subjects and classes</em> and{' '}
+            <em>Timetable</em>.
           </p>
         </Topic>
         <Topic title="Signing in on a phone or a shared computer">
@@ -206,8 +207,10 @@ function HeadmasterHelp() {
               <em>Check</em>, then <em>Save timetable</em>.
             </li>
             <li>
-              <strong>Publish</strong>: Timetable → <em>Preview and publish</em>. This creates every
-              lesson of the term.
+              <strong>Lessons</strong>: saving the timetable creates every lesson of the term at
+              once, and later changes to a slot apply straight away. If the checklist still says
+              &quot;Create the lessons&quot;, press <em>Check all lessons</em> on the Timetable
+              page.
             </li>
             <li>
               <strong>Started mid-term?</strong> On the Timetable page, choose the day recording

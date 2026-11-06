@@ -83,7 +83,7 @@ describe('help', () => {
     );
     const order = screen.getByText('The order to do things in').closest('details')!;
     expect(within(order).getByText('Term dates')).toBeInTheDocument();
-    expect(within(order).getByText('Publish')).toBeInTheDocument();
+    expect(within(order).getByText('Lessons')).toBeInTheDocument();
     expect(screen.getByText('A lesson did not take place')).toBeInTheDocument();
   });
 });

@@ -65,7 +65,8 @@ describe('setup checklist', () => {
     );
     steps = byId(expectOk(await head.get('/setup-status')).body.data.steps);
     expect(steps.timetable!.done).toBe(true);
-    expect(steps.publish!.done).toBe(false);
+    // Once the week dates exist, a new slot creates its lessons at once: nothing to publish.
+    expect(steps.publish!.done).toBe(true);
 
     expectOk(await head.post('/timetable/publish', { termId }));
     const done = expectOk(await head.get('/setup-status')).body.data;

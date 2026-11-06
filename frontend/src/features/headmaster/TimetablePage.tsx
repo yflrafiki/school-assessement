@@ -70,8 +70,9 @@ export function TimetablePage() {
     mutationFn: () => api.post('/timetable-entries', { ...form, weekday: Number(form.weekday) }),
     onSuccess: () => {
       setError(null);
+      setPublished("Slot added. Its lessons are on the teacher's list now, including today's.");
       refresh();
-      void qc.invalidateQueries({ queryKey: ['assignments'] });
+      void qc.invalidateQueries();
     },
     onError: (e) => setError(fullErrorMessage(e)),
   });
@@ -109,7 +110,7 @@ export function TimetablePage() {
     <>
       <PageHeader
         title="Timetable"
-        description="Upload the timetable or add slots one by one, then publish: publishing creates the lessons for every school day of the term."
+        description="Upload the timetable or add slots one by one. Every change creates or moves the lessons at once, so teachers see them straight away."
         actions={
           <button
             type="button"
@@ -117,7 +118,7 @@ export function TimetablePage() {
             disabled={!termId || publish.isPending}
             onClick={() => publish.mutate({ dryRun: true, confirmRepace: false })}
           >
-            Preview and publish
+            Check all lessons
           </button>
         }
       />
@@ -311,7 +312,7 @@ export function TimetablePage() {
             ? `Edit ${editing.assignment.subject.name}, ${editing.assignment.schoolClass.name}`
             : ''
         }
-        body="The new day and times apply when you publish the timetable. Lessons already recorded keep their history."
+        body="The new day and time apply at once to every lesson nobody has recorded yet. Lessons already recorded keep their history."
         confirmLabel="Save"
         onClose={() => setEditing(null)}
         onConfirm={async () => {
@@ -320,7 +321,7 @@ export function TimetablePage() {
             startTime: slot.startTime,
             endTime: slot.endTime,
           });
-          setPublished('Slot updated. Press "Preview and publish" to apply it to the lessons.');
+          setPublished('Slot updated. Teachers see the new day and time now.');
           refresh();
         }}
       >
@@ -394,9 +395,11 @@ export function TimetablePage() {
         {preview && (
           <div className="space-y-3">
             <p className="text-sm text-muted">
-              Publishing creates every lesson of the term from the timetable. Each class&apos;s
-              lessons cover the scheme&apos;s weeks in order. &quot;Too few lessons&quot; means the
-              timetable has fewer lessons than the scheme needs for that subject this term.
+              This rebuilds every lesson of the term from the timetable. Slot changes already apply
+              by themselves; use this after setting the week dates for the first time, or to check
+              that nothing is missing. Each class&apos;s lessons cover the scheme&apos;s weeks in
+              order. &quot;Too few lessons&quot; means the timetable has fewer lessons than the
+              scheme needs for that subject this term.
             </p>
             {preview.assignments.some((a) => a.needsConfirmation) && (
               <Alert tone="warn">

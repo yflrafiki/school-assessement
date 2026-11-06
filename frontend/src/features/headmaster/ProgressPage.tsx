@@ -119,7 +119,7 @@ export function ProgressPage() {
                 description={
                   rows.length
                     ? undefined
-                    : 'Assign subjects and publish the timetable to start tracking.'
+                    : 'Give teachers their subjects and put in the timetable to start tracking.'
                 }
               />
             );

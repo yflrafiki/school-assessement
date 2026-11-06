@@ -167,9 +167,27 @@ async function insertEntry(tx: Tx, actor: Actor, input: TimetableEntryBody) {
   }
 }
 
+/**
+ * A slot change takes effect at once: the subject's lessons are created, moved or removed in
+ * the same transaction, so teachers see today's lessons without the headmaster publishing.
+ * Before the term's week dates exist there is nothing to place lessons in, so this waits for
+ * the first publish.
+ */
+async function applySlotChange(tx: Tx, actor: Actor, assignmentId: string) {
+  const assignment = await tx.teachingAssignment.findUniqueOrThrow({
+    where: { id: assignmentId },
+    select: { termId: true, isActive: true },
+  });
+  if (!assignment.isActive) return;
+  if (!(await tx.termWeek.count({ where: { termId: assignment.termId } }))) return;
+  await lockAssignment(tx, actor.schoolId, assignmentId);
+  await syncAssignment(tx, assignmentId, { generate: true });
+}
+
 export async function createEntry(actor: Actor, input: TimetableEntryBody) {
   const entry = await prisma.$transaction(async (tx) => {
     const created = await insertEntry(tx, actor, input);
+    await applySlotChange(tx, actor, input.assignmentId);
     await audit(tx, {
       schoolId: actor.schoolId,
       actorId: actor.userId,
@@ -221,6 +239,7 @@ export async function updateEntry(
       });
     }
     const created = await insertEntry(tx, actor, next);
+    await applySlotChange(tx, actor, old.assignmentId);
     await audit(tx, {
       schoolId: actor.schoolId,
       actorId: actor.userId,
@@ -242,6 +261,7 @@ export async function deleteEntry(actor: Actor, id: string) {
     });
     if (!old) throw notFound('Timetable entry');
     await tx.timetableEntry.update({ where: { id }, data: { deletedAt: new Date() } });
+    await applySlotChange(tx, actor, old.assignmentId);
     await audit(tx, {
       schoolId: actor.schoolId,
       actorId: actor.userId,
@@ -427,6 +447,12 @@ export async function importTimetable(
 
         const result = { rows: out, created, replaced };
         if (input.dryRun || out.some((r) => r.error)) throw new ImportRollback(result);
+        const touched = await tx.teachingAssignment.findMany({
+          where: { schoolId: actor.schoolId, termId: term.id, classId: { in: classIds } },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+        });
+        for (const a of touched) await applySlotChange(tx, actor, a.id);
         await audit(tx, {
           schoolId: actor.schoolId,
           actorId: actor.userId,

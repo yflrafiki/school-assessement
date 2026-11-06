@@ -70,7 +70,7 @@ export function TimetableUpload({
         setDraft(null);
         setChecked(new Map());
         onSaved(
-          `${fileName}: ${res.created} weekly lessons saved${res.replaced ? `, replacing ${res.replaced} earlier slots of the same classes` : ''}. Press "Preview and publish" to create the lessons.`,
+          `${fileName}: ${res.created} weekly lessons saved${res.replaced ? `, replacing ${res.replaced} earlier slots of the same classes` : ''}. Teachers see the lessons now.`,
         );
         void qc.invalidateQueries({ queryKey: ['timetable'] });
         void qc.invalidateQueries({ queryKey: ['assignments'] });

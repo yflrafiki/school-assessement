@@ -65,8 +65,8 @@ const STEPS: Record<StepId, { title: string; why: string; to: string; action: st
     action: 'Open Timetable',
   },
   publish: {
-    title: 'Publish the timetable',
-    why: 'Press "Preview and publish" on the Timetable page. This creates every lesson of the term.',
+    title: 'Create the lessons',
+    why: 'Normally done by itself when the timetable is saved. If it is not ticked, press "Check all lessons" on the Timetable page.',
     to: '/h/timetable',
     action: 'Open Timetable',
   },

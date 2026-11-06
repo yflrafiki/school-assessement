@@ -127,7 +127,12 @@ export async function syncAssignment(
     });
     for (const l of generated) {
       if (wantedKeys.has(`${fromDbDate(l.date)}|${l.startMinute}`)) continue;
-      if (!l.record && l.status === 'SCHEDULED') {
+      // Untouched: scheduled, or cancelled by the system (holiday, absence, special week).
+      // A headmaster's own cancellation and any record are history and stay.
+      const untouched =
+        l.status === 'SCHEDULED' ||
+        (l.status === 'CANCELLED' && l.cancelReason !== 'SCHOOL_CANCELLATION');
+      if (!l.record && untouched) {
         await tx.lesson.delete({ where: { id: l.id } });
         lessonsRemoved += 1;
       } else if (l.status === 'SCHEDULED' && l.record?.status === 'DRAFT') {
