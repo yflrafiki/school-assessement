@@ -461,7 +461,10 @@ export async function publish(
   if (!term) throw notFound('Term');
   const weekCount = await prisma.termWeek.count({ where: { termId: term.id } });
   if (weekCount === 0) {
-    throw new AppError('CONFLICT', 'Set up the term weeks before publishing the timetable');
+    throw new AppError(
+      'CONFLICT',
+      `The week dates for ${term.name} are not saved yet, so the lessons cannot be placed in weeks. Go to Settings → Term weeks, press "Fill weekly from term start", then "Save weeks", and publish again.`,
+    );
   }
 
   let results: SyncResult[];
