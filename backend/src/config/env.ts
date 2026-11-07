@@ -23,6 +23,10 @@ const schema = z
     EMAILJS_MONTHLY_QUOTA: z.coerce.number().int().default(200),
     EMAIL_FROM_NAME: z.string().default('IPEL International School'),
     EMAIL_REPLY_TO: z.string().default(''),
+    // One-time creation of the system admin at start-up (hosts without a shell).
+    SYSTEM_ADMIN_EMAIL: z.string().optional(),
+    SYSTEM_ADMIN_NAME: z.string().optional(),
+    SYSTEM_ADMIN_PASSWORD: z.string().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.EMAIL_PROVIDER === 'emailjs') {

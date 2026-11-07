@@ -4,6 +4,7 @@ import { logger } from './config/logger.js';
 import { prisma } from './lib/db.js';
 import { startOutboxWorker } from './jobs/outboxWorker.js';
 import { startLessonReminders } from './jobs/lessonReminders.js';
+import { bootstrapSystemAdmin } from './jobs/bootstrapAdmin.js';
 
 const app = createApp();
 const server = app.listen(env.PORT, () => {
@@ -11,6 +12,9 @@ const server = app.listen(env.PORT, () => {
 });
 const stopWorker = startOutboxWorker();
 const stopReminders = startLessonReminders();
+bootstrapSystemAdmin().catch((err: unknown) =>
+  logger.error({ err }, 'Could not create the system admin from the start-up settings'),
+);
 
 let shuttingDown = false;
 async function shutdown(signal: string) {

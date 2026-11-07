@@ -15,6 +15,7 @@
     "db:seed": "tsx --conditions=source prisma/seed.ts",
     "create-headmaster": "tsx --conditions=source src/cli/create-headmaster.ts",
     "create-system-admin": "tsx --conditions=source src/cli/create-system-admin.ts",
+    "hash-password": "tsx --conditions=source src/cli/hash-password.ts",
     "postinstall": "prisma generate",
     "extract-scheme": "tsx --conditions=source src/cli/extract-scheme.ts"
   },

@@ -56,7 +56,9 @@ docs/               Architecture, database, API, security, curriculum import
    pnpm --filter @school/api create-system-admin -- --name "Full Name" --email owner@example.com
    ```
 
-   It prompts for the password, or reads `SYSTEM_ADMIN_PASSWORD` from the environment. Use an email that no school account uses. Sign in at the usual address; the admin lands on its own pages (`/a`).
+   It prompts for the password, or reads `SYSTEM_ADMIN_PASSWORD` from the environment.
+
+   **Without a shell on the host** (Render's free plan): set `SYSTEM_ADMIN_EMAIL`, `SYSTEM_ADMIN_NAME` and `SYSTEM_ADMIN_PASSWORD` in the host's environment and redeploy. On start-up the app creates the admin once (only if no system admin exists yet, and never replacing one). The log says whether it worked. Then delete the three settings. Use an email that no school account uses. Sign in at the usual address; the admin lands on its own pages (`/a`).
 
 ## Running locally
 
