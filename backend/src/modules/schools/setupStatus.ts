@@ -131,7 +131,7 @@ export async function setupStatus(schoolId: string) {
     detail: !lessonCount
       ? 'Not published yet'
       : unpublished.length
-        ? `Changes for ${plural(unpublished.length, 'subject')} not published yet`
+        ? `${plural(unpublished.length, 'subject')} not matched to lessons yet: press "Check all lessons" on the Timetable page`
         : `${plural(lessonCount, 'lesson')} created for the term`,
   });
 

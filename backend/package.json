@@ -14,6 +14,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx --conditions=source prisma/seed.ts",
     "create-headmaster": "tsx --conditions=source src/cli/create-headmaster.ts",
+    "create-system-admin": "tsx --conditions=source src/cli/create-system-admin.ts",
     "postinstall": "prisma generate",
     "extract-scheme": "tsx --conditions=source src/cli/extract-scheme.ts"
   },

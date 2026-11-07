@@ -23,6 +23,7 @@ What the system protects: teachers' and headmasters' accounts, lesson records, a
 ## Accounts
 
 - No public registration. A headmaster or school admin creates teachers. The first headmaster is created with the operator CLI.
+- System admin: created only with the operator CLI (`create-system-admin`). It has no school (a database CHECK makes this the only role without one, and every other role must have one) and a single permission, `system.view`. The API confines it to the read-only `/admin` routes; every school route answers 403, so it can see everything but change nothing. It receives no notifications. Its own sign-in, name and password work as for anyone else, with the same lockout.
 - Invitation: 32 random bytes, only the SHA-256 is stored, 72-hour expiry, single use. Resending revokes the old token, and a partial unique index allows one active invitation per user. The link is `/activate#token=...`. The fragment never reaches servers or logs, and the page removes it from the address bar once read.
 - Activation needs the token and the staff ID. Five wrong staff IDs burn the token. Expired, used, revoked, unknown and wrong-staff-ID cases all return the same `INVITATION_INVALID` message.
 - Passwords: Argon2id (19 MiB, t=2). Minimum 10 characters, with common passwords and the user's own name, email or staff ID rejected.

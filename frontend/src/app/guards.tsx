@@ -8,7 +8,7 @@ import { ErrorState, ForbiddenState } from '../components/States';
 import { AppShellSkeleton } from '../components/Skeleton';
 
 export function homeFor(role: Role) {
-  return role === 'TEACHER' ? '/t' : '/h';
+  return role === 'TEACHER' ? '/t' : role === 'SYSTEM_ADMIN' ? '/a' : '/h';
 }
 
 /** Any 401 clears the cached user and returns to sign-in with a return path. */

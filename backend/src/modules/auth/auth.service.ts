@@ -128,7 +128,7 @@ export async function logout(sessionId: string) {
 
 export async function updateOwnName(
   userId: string,
-  schoolId: string,
+  schoolId: string | null,
   fullName: string,
   requestId: string,
 ) {
@@ -155,13 +155,22 @@ export async function getMe(userId: string): Promise<Me> {
     where: { id: userId },
     include: { school: true, teacherProfile: { select: { id: true } } },
   });
+  // A system admin belongs to no school. The system serves one school (Ipel), so the admin
+  // sees that school's name; the id stays empty because the admin acts in no school.
+  const school = user.school ?? (await prisma.school.findFirst({ orderBy: { createdAt: 'asc' } }));
   return {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
     role: user.role,
     status: user.status,
-    school: { id: user.school.id, name: user.school.name, timezone: user.school.timezone },
+    school: user.school
+      ? { id: user.school.id, name: user.school.name, timezone: user.school.timezone }
+      : {
+          id: '',
+          name: school?.name ?? 'The school',
+          timezone: school?.timezone ?? 'Africa/Accra',
+        },
     teacherProfileId: user.teacherProfile?.id ?? null,
     permissions: [...ROLE_PERMISSIONS[user.role]],
   };
@@ -199,7 +208,7 @@ export async function issueInvitation(tx: Db, userId: string, issuedById: string
       template: 'INVITATION',
       payload: {
         to_name: user.fullName,
-        school_name: user.school.name,
+        school_name: user.school?.name ?? 'Teaching Monitor',
         // Token in the fragment so it never reaches server or proxy logs.
         link: `${env.APP_BASE_URL}/activate#token=${token}`,
         expires_in: '72 hours',
@@ -230,7 +239,11 @@ async function findUsableToken(db: Db, token: string, type: 'INVITATION' | 'PASS
 export async function validateInvitation(token: string) {
   const row = await findUsableToken(prisma, token, 'INVITATION');
   if (!row || row.user.status !== 'PENDING_ACTIVATION') throw invitationInvalid();
-  return { fullName: row.user.fullName, schoolName: row.user.school.name, email: row.user.email };
+  return {
+    fullName: row.user.fullName,
+    schoolName: row.user.school?.name ?? 'Teaching Monitor',
+    email: row.user.email,
+  };
 }
 
 export async function acceptInvitation(
@@ -334,7 +347,7 @@ export async function issuePasswordReset(tx: Db, userId: string, issuedById: str
       template: 'PASSWORD_RESET',
       payload: {
         to_name: user.fullName,
-        school_name: user.school.name,
+        school_name: user.school?.name ?? 'Teaching Monitor',
         link: `${env.APP_BASE_URL}/reset-password#token=${token}`,
         expires_in: '60 minutes',
       },

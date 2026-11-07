@@ -59,6 +59,8 @@ export const PERMISSIONS = [
   'curriculum.import',
   'records.view_all',
   'reports.view',
+  /** Read-only view of every school: the system admin. */
+  'system.view',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -74,6 +76,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reports.view',
   ],
   SCHOOL_ADMIN: ['teachers.manage', 'curriculum.import'],
+  SYSTEM_ADMIN: ['system.view'],
 };
 
 export interface Me {

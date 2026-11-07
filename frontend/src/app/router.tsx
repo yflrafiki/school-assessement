@@ -9,6 +9,7 @@ import {
 } from '../features/auth/AuthPages';
 import { ProfilePage } from '../features/auth/ProfilePage';
 import { HelpPage } from '../features/help/HelpPage';
+import { AdminActivity, AdminOverview, AdminPeople } from '../features/admin/AdminPages';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { TeacherOverview } from '../features/teacher/TeacherOverview';
 import { MySubjects } from '../features/teacher/MySubjects';
@@ -90,6 +91,22 @@ export const router = createBrowserRouter([
           { path: 'notifications', element: <NotificationsPage area="teacher" /> },
           { path: 'profile', element: <ProfilePage /> },
           { path: 'help', element: <HelpPage area="teacher" /> },
+          { path: '*', element: <NotFound /> },
+        ],
+      },
+      {
+        // The system admin: everything in the school, read-only.
+        path: '/a',
+        element: (
+          <RequireAuth roles={['SYSTEM_ADMIN']}>
+            <AppShell area="admin" />
+          </RequireAuth>
+        ),
+        children: [
+          { index: true, element: <AdminOverview /> },
+          { path: 'people', element: <AdminPeople /> },
+          { path: 'activity', element: <AdminActivity /> },
+          { path: 'profile', element: <ProfilePage /> },
           { path: '*', element: <NotFound /> },
         ],
       },

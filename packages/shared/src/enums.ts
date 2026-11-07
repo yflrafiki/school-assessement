@@ -1,6 +1,6 @@
 // Mirrors the Prisma enums. Kept here so the web app never imports the database client.
 
-export const ROLES = ['TEACHER', 'HEADMASTER', 'SCHOOL_ADMIN'] as const;
+export const ROLES = ['TEACHER', 'HEADMASTER', 'SCHOOL_ADMIN', 'SYSTEM_ADMIN'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const USER_STATUSES = ['PENDING_ACTIVATION', 'ACTIVE', 'DEACTIVATED'] as const;

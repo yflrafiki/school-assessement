@@ -48,7 +48,8 @@ export const loadSession: RequestHandler = async (req, _res, next) => {
 
   req.auth = {
     userId: session.user.id,
-    schoolId: session.user.schoolId,
+    // Empty for a system admin, who is confined to /admin routes (confineSystemAdmin).
+    schoolId: session.user.schoolId ?? '',
     role: session.user.role,
     teacherProfileId: session.user.teacherProfile?.id ?? null,
     sessionId: session.id,
@@ -59,6 +60,19 @@ export const loadSession: RequestHandler = async (req, _res, next) => {
 
 export const requireAuth: RequestHandler = (req, _res, next) => {
   if (!req.auth) return next(new AppError('UNAUTHENTICATED', 'Please sign in'));
+  next();
+};
+
+/**
+ * A system admin has no school, so every school route is closed to them: they read the
+ * whole system through /admin only, and can change nothing in a school.
+ */
+export const confineSystemAdmin: RequestHandler = (req, _res, next) => {
+  if (req.auth?.role === 'SYSTEM_ADMIN' && !/^\/admin(\/|$)/.test(req.path)) {
+    return next(
+      new AppError('FORBIDDEN', 'The system admin account can only open the admin pages'),
+    );
+  }
   next();
 };
 

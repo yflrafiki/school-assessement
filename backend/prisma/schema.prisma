@@ -17,6 +17,8 @@ enum Role {
   TEACHER
   HEADMASTER
   SCHOOL_ADMIN
+  /// Sees every school, read-only. Has no school of its own; created from the command line.
+  SYSTEM_ADMIN
 }
 
 enum UserStatus {
@@ -137,7 +139,8 @@ model School {
 
 model User {
   id                String     @id @default(uuid()) @db.Uuid
-  schoolId          String     @map("school_id") @db.Uuid
+  /// Null only for a system admin (enforced by a CHECK constraint).
+  schoolId          String?    @map("school_id") @db.Uuid
   email             String     @unique
   fullName          String     @map("full_name")
   role              Role
@@ -150,7 +153,7 @@ model User {
   createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  school         School?         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   teacherProfile TeacherProfile?
   sessions       Session[]
   authTokens     AuthToken[]     @relation("TokenOwner")

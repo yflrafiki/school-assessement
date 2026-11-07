@@ -52,6 +52,14 @@ const TEACHER_NAV: NavItem[] = [
   { to: '/t/help', label: 'Help', icon: FiHelpCircle },
 ];
 
+/** The system admin's pages: everything in the school, read-only. */
+const ADMIN_NAV: NavItem[] = [
+  { to: '/a', label: 'Overview', icon: FiHome, end: true, primary: true },
+  { to: '/a/people', label: 'People', icon: FiUsers, primary: true },
+  { to: '/a/activity', label: 'Activity', icon: FiActivity, primary: true },
+  { to: '/a/profile', label: 'Profile', icon: FiUser },
+];
+
 const HEADMASTER_NAV: NavItem[] = [
   {
     to: '/h',
@@ -98,7 +106,7 @@ const HEADMASTER_NAV: NavItem[] = [
   { to: '/h/help', label: 'Help', icon: FiHelpCircle },
 ];
 
-export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
+export function AppShell({ area }: { area: 'teacher' | 'headmaster' | 'admin' }) {
   const me = useCurrentUser();
   const location = useLocation();
   // The drawer belongs to the page it was opened on, so navigating closes it.
@@ -108,15 +116,16 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const items = (area === 'teacher' ? TEACHER_NAV : HEADMASTER_NAV).filter(
-    (i) => !i.permission || me.permissions.includes(i.permission),
-  );
-  const base = area === 'teacher' ? '/t' : '/h';
+  const items = (
+    area === 'teacher' ? TEACHER_NAV : area === 'admin' ? ADMIN_NAV : HEADMASTER_NAV
+  ).filter((i) => !i.permission || me.permissions.includes(i.permission));
+  const base = area === 'teacher' ? '/t' : area === 'admin' ? '/a' : '/h';
 
   // New notifications arrive the moment they happen; show each one briefly.
   const [toast, setToast] = useState<LiveNotification | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
-  const { connected } = useLiveNotifications(setToast);
+  // The system admin receives no notifications.
+  const { connected } = useLiveNotifications(setToast, area !== 'admin');
   const toastHref = toast?.recordId
     ? area === 'headmaster'
       ? `/h/activity?record=${toast.recordId}`
@@ -166,11 +175,13 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
     <div className="border-t border-white/10 p-3">
       <p className="truncate px-1 text-sm text-white">{me.fullName}</p>
       <p className="truncate px-1 text-xs text-nav-text">
-        {me.role === 'SCHOOL_ADMIN'
-          ? 'School admin'
-          : me.role === 'HEADMASTER'
-            ? 'Headmaster'
-            : 'Teacher'}
+        {me.role === 'SYSTEM_ADMIN'
+          ? 'System admin'
+          : me.role === 'SCHOOL_ADMIN'
+            ? 'School admin'
+            : me.role === 'HEADMASTER'
+              ? 'Headmaster'
+              : 'Teacher'}
       </p>
       <button
         type="button"
@@ -237,7 +248,7 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
           </button>
           <span className="truncate text-sm text-muted lg:hidden">{me.school.name}</span>
         </div>
-        <NotificationBell to={`${base}/notifications`} live={connected} />
+        {area !== 'admin' && <NotificationBell to={`${base}/notifications`} live={connected} />}
       </header>
 
       <main id="main" className="mx-auto max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:pb-8">

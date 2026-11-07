@@ -65,11 +65,13 @@ export function ProfilePage() {
             <div>
               <dt className="text-muted">Role</dt>
               <dd>
-                {me.role === 'SCHOOL_ADMIN'
-                  ? 'School admin'
-                  : me.role === 'HEADMASTER'
-                    ? 'Headmaster'
-                    : 'Teacher'}
+                {me.role === 'SYSTEM_ADMIN'
+                  ? 'System admin (sees everything, read-only)'
+                  : me.role === 'SCHOOL_ADMIN'
+                    ? 'School admin'
+                    : me.role === 'HEADMASTER'
+                      ? 'Headmaster'
+                      : 'Teacher'}
               </dd>
             </div>
           </dl>

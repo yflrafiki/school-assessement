@@ -17,6 +17,8 @@ async function readPassword(): Promise<string> {
 
 async function main() {
   const { values } = parseArgs({
+    // pnpm passes its "--" separator through; it is not an argument.
+    args: process.argv.slice(2).filter((a) => a !== '--'),
     options: {
       school: { type: 'string' },
       'school-id': { type: 'string' },

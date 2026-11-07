@@ -5,7 +5,7 @@ import { pinoHttp } from 'pino-http';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { requestId } from './middleware/requestId.js';
-import { loadSession, requireAuth, requireJson } from './middleware/session.js';
+import { loadSession, requireAuth, confineSystemAdmin, requireJson } from './middleware/session.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { announceLessonChanges } from './middleware/announceLessonChanges.js';
 import { rateLimit } from './middleware/rateLimit.js';
@@ -21,6 +21,7 @@ import { recordsRouter } from './modules/teaching-records/records.routes.js';
 import { progressRouter } from './modules/progress/progress.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
+import { adminRouter } from './modules/admin/admin.routes.js';
 
 export function createApp() {
   const app = express();
@@ -115,6 +116,7 @@ export function createApp() {
 
   // Everything below requires a signed-in user; school scope comes from the session.
   api.use(requireAuth);
+  api.use(confineSystemAdmin);
   api.use(announceLessonChanges);
   api.use(teachersRouter);
   api.use(assignmentsRouter);
@@ -126,6 +128,7 @@ export function createApp() {
   api.use(progressRouter);
   api.use(notificationsRouter);
   api.use(reportsRouter);
+  api.use(adminRouter);
 
   app.use('/api/v1', api);
 

@@ -53,7 +53,7 @@ describe('accepting an upload without review', () => {
     body.rows[1]!.indicator = 'B8.1.1.2.1 Wrong level code';
     body.rows.push({ ...body.rows[2]!, subject: 'Underwater Basket Weaving' });
     const imp = expectOk(await head.post('/curriculum/imports', body));
-    const actor = { schoolId: user.schoolId, userId: user.id, requestId: 'test' };
+    const actor = { schoolId: user.schoolId!, userId: user.id, requestId: 'test' };
     return { head, actor, termId, batchId: imp.body.data.id as string };
   }
 
@@ -83,7 +83,7 @@ describe('editing a published topic', () => {
     const { termId } = await setupTerm(head, 0);
     const imp = expectOk(await head.post('/curriculum/imports', sampleImport(termId)));
     await acceptUpload(
-      { schoolId: user.schoolId, userId: user.id, requestId: 'test' },
+      { schoolId: user.schoolId!, userId: user.id, requestId: 'test' },
       imp.body.data.id,
       { publish: true },
     );

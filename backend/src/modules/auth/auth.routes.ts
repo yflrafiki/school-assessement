@@ -59,7 +59,8 @@ authRouter.patch('/auth/me', requireAuth, async (req, res) => {
   const a = auth(req);
   if (a.role === 'TEACHER') throw forbidden();
   const { fullName } = body(req, updateMeBody);
-  await service.updateOwnName(a.userId, a.schoolId, fullName, req.requestId);
+  // The system admin has no school (empty in the session).
+  await service.updateOwnName(a.userId, a.schoolId || null, fullName, req.requestId);
   res.json({ data: await service.getMe(a.userId) });
 });
 

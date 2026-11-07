@@ -43,7 +43,10 @@ const RETRY_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000];
  * server's hourly re-authentication). Uses fetch rather than EventSource so the session
  * token travels in the Authorization header, never in the URL.
  */
-export function useLiveNotifications(onNotification: (n: LiveNotification) => void) {
+export function useLiveNotifications(
+  onNotification: (n: LiveNotification) => void,
+  enabled = true,
+) {
   const qc = useQueryClient();
   const [connected, setConnected] = useState(false);
   const handler = useRef(onNotification);
@@ -121,13 +124,13 @@ export function useLiveNotifications(onNotification: (n: LiveNotification) => vo
       scheduleRetry();
     };
 
-    void connect();
+    if (enabled) void connect();
     return () => {
       stopped = true;
       clearTimeout(retryTimer);
       controller?.abort();
     };
-  }, [qc]);
+  }, [qc, enabled]);
 
   return { connected };
 }

@@ -50,6 +50,14 @@ docs/               Architecture, database, API, security, curriculum import
 
    It prompts for the password, or reads `HEADMASTER_PASSWORD` from the environment. To add another headmaster to an existing school, pass `--school-id <id>` instead of `--school`.
 
+5. **System admin (optional).** One account that sees everything in the school, read-only: its people, lesson records, setup and all activity. It cannot change anything. It is also created only by an operator:
+
+   ```sh
+   pnpm --filter @school/api create-system-admin -- --name "Full Name" --email owner@example.com
+   ```
+
+   It prompts for the password, or reads `SYSTEM_ADMIN_PASSWORD` from the environment. Use an email that no school account uses. Sign in at the usual address; the admin lands on its own pages (`/a`).
+
 ## Running locally
 
 In two terminals:
