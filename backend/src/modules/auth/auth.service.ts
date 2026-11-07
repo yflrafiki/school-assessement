@@ -1,7 +1,7 @@
 import { ROLE_PERMISSIONS, type Me } from '@school/shared';
 import { env } from '../../config/env.js';
 import { prisma, type Db } from '../../lib/db.js';
-import { AppError, validation } from '../../lib/errors.js';
+import { AppError, isUniqueViolation, validation } from '../../lib/errors.js';
 import { audit } from '../../lib/audit.js';
 import { publishToUser } from '../../lib/events.js';
 import { hashToken, newToken } from '../../lib/tokens.js';
@@ -414,6 +414,65 @@ export async function resetPassword(
     return true;
   });
   if (!ok) throw resetInvalid();
+}
+
+/**
+ * Changes the sign-in email of a headmaster, school admin or the system admin. Whoever holds
+ * the email can reset the password, so the current password is required, the account's other
+ * sessions end, and the old address is told about the change.
+ */
+export async function changeOwnEmail(
+  userId: string,
+  sessionId: string,
+  input: { email: string; currentPassword: string },
+  requestId: string,
+) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    include: { school: true },
+  });
+  if (!user.passwordHash || !(await verifyPassword(user.passwordHash, input.currentPassword))) {
+    throw validation({ currentPassword: ['Your current password is incorrect'] });
+  }
+  if (input.email === user.email) {
+    throw validation({ email: ['This is already your email'] });
+  }
+  if (await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } })) {
+    throw validation({ email: ['Another account already uses this email'] });
+  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { email: input.email } });
+      await revokeAllSessions(tx, userId, sessionId);
+      await tx.emailOutbox.create({
+        data: {
+          schoolId: user.schoolId,
+          toEmail: user.email,
+          template: 'EMAIL_CHANGED',
+          payload: {
+            to_name: user.fullName,
+            school_name: user.school?.name ?? 'Teaching Monitor',
+            new_email: input.email,
+            link: `${env.APP_BASE_URL}/login`,
+          },
+        },
+      });
+      await audit(tx, {
+        schoolId: user.schoolId,
+        actorId: userId,
+        action: 'user.email_changed',
+        entityType: 'User',
+        entityId: userId,
+        metadata: { from: user.email, to: input.email },
+        requestId,
+      });
+    });
+  } catch (err) {
+    // Two people claiming the same address at once: the unique email index decides.
+    if (isUniqueViolation(err))
+      throw validation({ email: ['Another account already uses this email'] });
+    throw err;
+  }
 }
 
 export async function changePassword(

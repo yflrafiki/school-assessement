@@ -28,6 +28,7 @@ What the system protects: teachers' and headmasters' accounts, lesson records, a
 - Activation needs the token and the staff ID. Five wrong staff IDs burn the token. Expired, used, revoked, unknown and wrong-staff-ID cases all return the same `INVITATION_INVALID` message.
 - Passwords: Argon2id (19 MiB, t=2). Minimum 10 characters, with common passwords and the user's own name, email or staff ID rejected.
 - Login: same message for an unknown email and a wrong password. The time spent is equalised with a dummy hash check. Five failures lock the account for 15 minutes. Forgot-password always answers 202 with the same body and throttles per account.
+- Changing your own sign-in email (system admin, headmaster, school admin; teachers ask the headmaster) needs the current password, is rate-limited, ends the account's other sessions, sends a notice to the old address (`EMAIL_CHANGED`) and is audited with both addresses. Whoever holds the email can reset the password, so this is treated like a password change.
 - Reset links expire after 60 minutes and are single use. A successful reset revokes every session. Deactivation revokes sessions, outstanding tokens and live connections at once.
 
 ## Sessions

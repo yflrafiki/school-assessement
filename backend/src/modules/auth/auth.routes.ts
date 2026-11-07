@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import {
+  changeOwnEmailBody,
   changePasswordBody,
   forgotPasswordBody,
   invitationAcceptBody,
@@ -61,6 +62,16 @@ authRouter.patch('/auth/me', requireAuth, async (req, res) => {
   const { fullName } = body(req, updateMeBody);
   // The system admin has no school (empty in the session).
   await service.updateOwnName(a.userId, a.schoolId || null, fullName, req.requestId);
+  res.json({ data: await service.getMe(a.userId) });
+});
+
+// A handful of attempts an hour: each one checks the password.
+const emailChangeLimit = rateLimit({ name: 'email-change', windowMs: 60 * 60 * 1000, max: 10 });
+
+authRouter.patch('/auth/me/email', requireAuth, emailChangeLimit, async (req, res) => {
+  const a = auth(req);
+  if (a.role === 'TEACHER') throw forbidden();
+  await service.changeOwnEmail(a.userId, a.sessionId, body(req, changeOwnEmailBody), req.requestId);
   res.json({ data: await service.getMe(a.userId) });
 });
 

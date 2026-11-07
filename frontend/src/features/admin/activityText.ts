@@ -56,6 +56,7 @@ const ACTIONS: Record<string, string> = {
   'timetable.entry_updated': 'changed a timetable slot',
   'timetable.imported': 'uploaded the timetable',
   'timetable.published': 'rebuilt the lessons from the timetable',
+  'user.email_changed': 'changed their sign-in email',
   'user.name_changed': 'changed their name',
 };
 

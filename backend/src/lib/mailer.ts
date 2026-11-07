@@ -1,7 +1,7 @@
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
-export type EmailTemplateName = 'INVITATION' | 'PASSWORD_RESET';
+export type EmailTemplateName = 'INVITATION' | 'PASSWORD_RESET' | 'EMAIL_CHANGED';
 
 export interface EmailMessage {
   to: string;
@@ -43,6 +43,16 @@ export function emailWording(template: EmailTemplateName, p: Record<string, stri
       intro: `${school} has created a Teaching Monitor account for you. Activate it to start recording your lessons. You will be asked for your staff ID and to choose a password.`,
       action_label: 'Activate my account',
       closing_note: `This link expires in ${p.expires_in ?? '72 hours'} and can only be used once. If you were not expecting this email, you can ignore it.`,
+    };
+  }
+  if (template === 'EMAIL_CHANGED') {
+    return {
+      subject: 'Your Teaching Monitor sign-in email was changed',
+      heading: 'Your sign-in email was changed',
+      intro: `The email for your ${school} Teaching Monitor account was changed to ${p.new_email ?? 'a new address'}. From now on you sign in with the new address.`,
+      action_label: 'Open the Teaching Monitor',
+      closing_note:
+        'If you made this change, there is nothing more to do. If you did not, tell the headmaster straight away: someone may have used your account.',
     };
   }
   return {

@@ -56,7 +56,7 @@ export function ProfilePage() {
             </div>
             <div>
               <dt className="text-muted">Email</dt>
-              <dd>{me.email}</dd>
+              <dd>{me.role === 'TEACHER' ? me.email : <EditOwnEmail current={me.email} />}</dd>
             </div>
             <div>
               <dt className="text-muted">School</dt>
@@ -78,7 +78,7 @@ export function ProfilePage() {
           <p className="border-t border-line px-4 py-3 text-xs text-muted">
             {me.role === 'TEACHER'
               ? 'To change your name or email, ask your headmaster.'
-              : 'Your email is your sign-in, so it can only be changed by the system operator. The school name is changed under Settings.'}
+              : 'Your email is how you sign in. Changing it needs your password; your other devices are signed out and your old address is told. The school name is changed under Settings.'}
           </p>
         </Section>
         <Section title="Change password">
@@ -183,6 +183,102 @@ function EditOwnName({ current }: { current: string }) {
       <span className="flex gap-2">
         <SubmitButton pending={save.isPending} pendingLabel="Saving…" className="btn-primary h-8">
           Save
+        </SubmitButton>
+        <button
+          type="button"
+          className="btn-secondary h-8"
+          onClick={() => setEditing(false)}
+          disabled={save.isPending}
+        >
+          Cancel
+        </button>
+      </span>
+    </form>
+  );
+}
+
+/**
+ * Changes the sign-in email. The password is asked for because whoever holds the email can reset
+ * the password; the server also signs out other devices and tells the old address.
+ */
+function EditOwnEmail({ current }: { current: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const save = useMutation({
+    mutationFn: () => api.patch<One<Me>>('/auth/me/email', { email, currentPassword: password }),
+    onSuccess: (res) => {
+      qc.setQueryData(meKey, res.data);
+      setEditing(false);
+      setDone(true);
+    },
+    onError: (err) => setError(fullErrorMessage(err)),
+  });
+
+  if (!editing) {
+    return (
+      <>
+        <span className="flex items-center gap-2">
+          {current}
+          <button
+            type="button"
+            className="btn-ghost h-7 px-2 text-xs"
+            onClick={() => {
+              setEmail('');
+              setPassword('');
+              setError(null);
+              setDone(false);
+              setEditing(true);
+            }}
+          >
+            Change
+          </button>
+        </span>
+        {done && (
+          <span className="mt-2 block">
+            <Alert tone="ok">
+              Email changed. Sign in with the new address from now on. Your other devices were
+              signed out, and your old address was told about the change.
+            </Alert>
+          </span>
+        )}
+      </>
+    );
+  }
+  return (
+    <form
+      className="mt-1 space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError(null);
+        save.mutate();
+      }}
+    >
+      <FormField label="New email">
+        <input
+          className="input"
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
+        />
+      </FormField>
+      <FormField label="Your current password" hint="To confirm it is you">
+        <PasswordInput
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+      </FormField>
+      {error && <Alert>{error}</Alert>}
+      <span className="flex gap-2">
+        <SubmitButton pending={save.isPending} pendingLabel="Saving…" className="btn-primary h-8">
+          Change email
         </SubmitButton>
         <button
           type="button"

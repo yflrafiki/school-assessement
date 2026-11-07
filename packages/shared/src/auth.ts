@@ -49,6 +49,12 @@ export const updateMeBody = z.object({
   fullName: z.string().trim().min(2, 'Enter your full name').max(120),
 });
 
+/** The admin and the headmaster may change their own sign-in email; teachers ask their headmaster. */
+export const changeOwnEmailBody = z.object({
+  email,
+  currentPassword: z.string().min(1, 'Enter your current password').max(200),
+});
+
 export const PERMISSIONS = [
   'records.own',
   'lessons.own',
