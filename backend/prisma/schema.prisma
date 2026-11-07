@@ -17,7 +17,7 @@ enum Role {
   TEACHER
   HEADMASTER
   SCHOOL_ADMIN
-  /// Sees every school, read-only. Has no school of its own; created from the command line.
+  /// Sees everything in the school, read-only. Belongs to no school row; created from the command line.
   SYSTEM_ADMIN
 }
 

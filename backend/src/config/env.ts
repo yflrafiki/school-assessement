@@ -21,7 +21,7 @@ const schema = z
     EMAILJS_TEMPLATE_INVITATION: z.string().default(''),
     EMAILJS_TEMPLATE_RESET: z.string().default(''),
     EMAILJS_MONTHLY_QUOTA: z.coerce.number().int().default(200),
-    EMAIL_FROM_NAME: z.string().default('School Teaching Monitor'),
+    EMAIL_FROM_NAME: z.string().default('IPEL International School'),
     EMAIL_REPLY_TO: z.string().default(''),
   })
   .superRefine((v, ctx) => {

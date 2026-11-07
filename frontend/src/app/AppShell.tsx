@@ -22,6 +22,7 @@ import {
 } from 'react-icons/fi';
 import type { Permission } from '@school/shared';
 import { api, setSessionToken } from '../lib/api';
+import { APP_NAME, SCHOOL_NAME } from '../lib/brand';
 import { useCurrentUser } from '../features/auth/useMe';
 import { NotificationBell } from '../features/notifications/NotificationBell';
 import { LiveToast } from '../features/notifications/LiveToast';
@@ -164,7 +165,7 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' | 'admin' })
 
   const brand = (
     <div className="border-b border-white/10 px-4 py-4">
-      <p className="text-sm font-semibold text-white">Teaching Monitor</p>
+      <p className="text-sm font-semibold text-white">{APP_NAME}</p>
       <p className="truncate text-xs text-nav-text" title={me.school.name}>
         {me.school.name}
       </p>
@@ -288,8 +289,10 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <p className="text-lg font-semibold text-ink">Teaching Monitor</p>
-          <p className="text-sm text-muted">Weekly teaching records for Junior High Schools</p>
+          <p className="text-lg font-semibold text-ink">{SCHOOL_NAME}</p>
+          <p className="text-sm text-muted">
+            {APP_NAME}: weekly teaching records, Form 1 to Form 3
+          </p>
         </div>
         <div className="card p-6">{children}</div>
       </div>

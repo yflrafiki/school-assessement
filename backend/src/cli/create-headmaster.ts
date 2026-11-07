@@ -1,5 +1,7 @@
-// Operator command: creates a school (if needed) and its first headmaster.
-// Usage: pnpm --filter @school/api create-headmaster -- --school "Name" --name "Full Name" --email a@b.c
+// Operator command: creates a headmaster for the school. The system serves one school (Ipel):
+// the first run creates it, and every later run adds the headmaster to that same school.
+// Usage: pnpm --filter @school/api create-headmaster -- --name "Full Name" --email a@b.c
+//        (first run only: also --school "IPEL International School")
 // The password is read from the HEADMASTER_PASSWORD environment variable, or prompted for.
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline/promises';
@@ -21,16 +23,26 @@ async function main() {
     args: process.argv.slice(2).filter((a) => a !== '--'),
     options: {
       school: { type: 'string' },
-      'school-id': { type: 'string' },
       name: { type: 'string' },
       email: { type: 'string' },
       timezone: { type: 'string', default: 'Africa/Accra' },
     },
   });
   const email = values.email?.trim().toLowerCase();
-  if (!values.name || !email || (!values.school && !values['school-id'])) {
+  if (!values.name || !email) {
+    console.error('Required: --name "Full Name" --email address');
+    process.exit(1);
+  }
+  const existing = await prisma.school.findMany({ select: { id: true, name: true } });
+  if (existing.length && values.school) {
     console.error(
-      'Required: --name, --email and either --school "School name" or --school-id <id>',
+      `This system serves one school, "${existing[0]?.name}". Leave out --school to add the headmaster to it.`,
+    );
+    process.exit(1);
+  }
+  if (!existing.length && !values.school) {
+    console.error(
+      'No school yet. On the first run, also pass --school "IPEL International School".',
     );
     process.exit(1);
   }
@@ -51,8 +63,8 @@ async function main() {
 
   const passwordHash = await hashPassword(password);
   const result = await prisma.$transaction(async (tx) => {
-    const school = values['school-id']
-      ? await tx.school.findUniqueOrThrow({ where: { id: values['school-id'] } })
+    const school = existing[0]
+      ? await tx.school.findUniqueOrThrow({ where: { id: existing[0].id } })
       : await tx.school.create({
           data: { name: values.school as string, timezone: values.timezone as string },
         });

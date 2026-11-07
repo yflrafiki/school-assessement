@@ -45,10 +45,10 @@ docs/               Architecture, database, API, security, curriculum import
 4. **First headmaster.** Headmasters are created by an operator, never through the app:
 
    ```sh
-   pnpm --filter @school/api create-headmaster -- --school "School name" --name "Full Name" --email head@school.example
+   pnpm --filter @school/api create-headmaster -- --school "IPEL International School" --name "Full Name" --email head@school.example
    ```
 
-   It prompts for the password, or reads `HEADMASTER_PASSWORD` from the environment. To add another headmaster to an existing school, pass `--school-id <id>` instead of `--school`.
+   It prompts for the password, or reads `HEADMASTER_PASSWORD` from the environment. The system serves one school, Ipel: `--school` is only for the very first run, which creates it. To add another headmaster later, leave `--school` out; the command refuses to create a second school.
 
 5. **System admin (optional).** One account that sees everything in the school, read-only: its people, lesson records, setup and all activity. It cannot change anything. It is also created only by an operator:
 
