@@ -8,6 +8,7 @@ import { TeacherOverviewSkeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TeacherLessonList } from '../lessons/LessonList';
 import { useCurrentUser } from '../auth/useMe';
+import { LessonAlertsPrompt } from '../notifications/LessonAlertsPrompt';
 import type { AssignmentProgress, Lesson } from '../../types/api';
 
 interface TeacherDashboard {
@@ -33,6 +34,7 @@ export function TeacherOverview() {
         title={`Good day, ${me.fullName.split(' ')[0]}`}
         description={query.data ? formatDate(query.data.date) : undefined}
       />
+      <LessonAlertsPrompt />
       <QueryView query={query} skeleton={<TeacherOverviewSkeleton />}>
         {(d) => (
           <div className="grid gap-5 lg:grid-cols-3">
@@ -43,7 +45,7 @@ export function TeacherOverview() {
                 ) : (
                   <EmptyState
                     title="No lessons today"
-                    description="Lessons appear here once the headmaster publishes the timetable."
+                    description="Your lessons appear here once the headmaster puts your subjects on the timetable."
                   />
                 )}
               </Section>

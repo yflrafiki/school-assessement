@@ -100,6 +100,7 @@ enum ImportRowDecision {
 enum NotificationType {
   RECORD_SUBMITTED
   RECORD_EDITED
+  LESSON_REMINDER
   EMAIL_QUOTA_WARNING
 }
 
@@ -470,6 +471,7 @@ model Lesson {
   rescheduledFrom Lesson?            @relation("LessonReschedule", fields: [rescheduledFromId], references: [id], onDelete: Restrict)
   rescheduledTo   Lesson?            @relation("LessonReschedule")
   record          TeachingRecord?
+  notifications   Notification[]
 
   @@unique([assignmentId, date, startMinute])
   @@index([schoolId, date])
@@ -661,6 +663,7 @@ model Notification {
   recipientId String           @map("recipient_id") @db.Uuid
   type        NotificationType
   recordId    String?          @map("record_id") @db.Uuid
+  lessonId    String?          @map("lesson_id") @db.Uuid
   title       String
   body        String
   readAt      DateTime?        @map("read_at") @db.Timestamptz(3)
@@ -669,8 +672,10 @@ model Notification {
   school    School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   recipient User            @relation(fields: [recipientId], references: [id], onDelete: Restrict)
   record    TeachingRecord? @relation(fields: [recordId], references: [id], onDelete: Restrict)
+  lesson    Lesson?         @relation(fields: [lessonId], references: [id], onDelete: SetNull)
 
   @@unique([recipientId, type, recordId])
+  @@unique([recipientId, type, lessonId])
   @@index([recipientId, createdAt(sort: Desc), id])
   @@map("notifications")
 }

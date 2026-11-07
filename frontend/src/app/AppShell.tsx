@@ -121,7 +121,9 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
     ? area === 'headmaster'
       ? `/h/activity?record=${toast.recordId}`
       : `/t/records/${toast.recordId}`
-    : null;
+    : toast?.lessonId && area === 'teacher'
+      ? `/t/lessons/${toast.lessonId}/record`
+      : null;
 
   async function signOut() {
     try {
@@ -134,14 +136,14 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' }) {
   }
 
   const nav = (
-    <nav aria-label="Main" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+    <nav aria-label="Main" className="scroll-dark flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
       {items.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
           end={item.end ?? false}
           className={({ isActive }) =>
-            `flex items-center gap-3 rounded-md px-3 py-2 text-sm ${isActive ? 'bg-nav-active font-medium text-white' : 'text-nav-text hover:bg-nav-hover hover:text-white'}`
+            `flex items-center gap-3 rounded-md px-3 py-1.5 text-sm ${isActive ? 'bg-nav-active font-medium text-white' : 'text-nav-text hover:bg-nav-hover hover:text-white'}`
           }
         >
           <item.icon className="h-4 w-4 shrink-0" aria-hidden />

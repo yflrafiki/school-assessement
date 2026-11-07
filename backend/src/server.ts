@@ -3,12 +3,14 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './lib/db.js';
 import { startOutboxWorker } from './jobs/outboxWorker.js';
+import { startLessonReminders } from './jobs/lessonReminders.js';
 
 const app = createApp();
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, emailProvider: env.EMAIL_PROVIDER }, 'API listening');
 });
 const stopWorker = startOutboxWorker();
+const stopReminders = startLessonReminders();
 
 let shuttingDown = false;
 async function shutdown(signal: string) {
@@ -18,6 +20,7 @@ async function shutdown(signal: string) {
   const force = setTimeout(() => process.exit(1), 15_000);
   force.unref();
   server.close();
+  stopReminders();
   await stopWorker();
   await prisma.$disconnect();
   process.exit(0);

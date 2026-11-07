@@ -37,7 +37,7 @@ export function LiveToast({
             <p className="text-muted">{notification.body}</p>
             {href && (
               <Link to={href} onClick={onClose} className="link mt-1 inline-block">
-                Open record
+                {notification.lessonId ? 'Open the lesson' : 'Open record'}
               </Link>
             )}
           </div>

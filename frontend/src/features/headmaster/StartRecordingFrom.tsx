@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type One } from '../../lib/api';
 import { addDays, formatDate } from '../../lib/format';
 import { fullErrorMessage } from '../../lib/forms';
@@ -40,7 +40,16 @@ export function StartRecordingFrom({ term }: { term: Term }) {
     },
   });
 
-  if (term.startDate >= monday) return null;
+  // Only while earlier lessons are still waiting for a record (the checklist's last step).
+  const status = useQuery({
+    queryKey: ['setup-status'],
+    queryFn: () =>
+      api.get<One<{ steps: { id: string; done: boolean }[] }>>('/setup-status').then((r) => r.data),
+    enabled: term.isCurrent,
+  });
+  const nothingToDo = status.data?.steps.find((s) => s.id === 'start')?.done ?? false;
+
+  if (term.startDate >= monday || (nothingToDo && !done)) return null;
   return (
     <Section title="Started using the system part-way through the term?" className="mb-5">
       <div className="space-y-3 px-4 py-4 text-sm">

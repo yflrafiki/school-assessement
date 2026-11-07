@@ -42,6 +42,7 @@ export function NotificationsPage({ area }: { area: 'teacher' | 'headmaster' }) 
       navigate(
         area === 'headmaster' ? `/h/activity?record=${n.recordId}` : `/t/records/${n.recordId}`,
       );
+    else if (n.lessonId && area === 'teacher') navigate(`/t/lessons/${n.lessonId}/record`);
   }
 
   const items = query.data?.pages.flatMap((p) => p.data) ?? [];

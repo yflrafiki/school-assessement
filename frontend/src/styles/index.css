@@ -27,6 +27,32 @@
 
 html {
   font-size: 14px;
+  /* Room for the scrollbar is always kept, so pages do not jump sideways when one page is
+     long enough to scroll and the next is not (very visible with Windows' scrollbars). */
+  scrollbar-gutter: stable;
+}
+
+/* Slim, quiet scrollbars everywhere instead of the browser's thick default. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c4cad4 transparent;
+}
+
+/* An open dialog or drawer scrolls on its own; the page behind it stays still, so there are
+   never two scrollbars side by side. */
+body:has(dialog[open]) {
+  overflow: hidden;
+}
+
+/* The dark sidebar gets a scrollbar that matches it. */
+@utility scroll-dark {
+  scrollbar-color: rgb(255 255 255 / 0.22) transparent;
+  overscroll-behavior: contain;
+}
+
+/* For strips that scroll sideways by swiping (tabs, the phone menu): no visible bar. */
+@utility scroll-hidden {
+  scrollbar-width: none;
 }
 
 body {

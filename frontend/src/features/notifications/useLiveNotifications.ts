@@ -9,6 +9,30 @@ export interface LiveNotification {
   title: string;
   body: string;
   recordId: string | null;
+  /** Set on a lesson reminder: the lesson to record. */
+  lessonId?: string | null;
+}
+
+/**
+ * Also shows the computer's own notification when this tab is in the background, if the
+ * person allowed it (see LessonAlertsPrompt). Some phones only allow these from an installed
+ * app; there the in-page pop-up is shown instead.
+ */
+function showSystemNotification(n: LiveNotification) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  if (document.visibilityState === 'visible') return;
+  try {
+    const shown = new Notification(n.title, {
+      body: n.body,
+      tag: n.lessonId ?? n.recordId ?? undefined,
+    });
+    shown.onclick = () => {
+      window.focus();
+      shown.close();
+    };
+  } catch {
+    // Not allowed outside an installed app on this device.
+  }
 }
 
 const RETRY_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000];
@@ -76,7 +100,14 @@ export function useLiveNotifications(onNotification: (n: LiveNotification) => vo
               void qc.invalidateQueries({ queryKey: unreadKey });
               void qc.invalidateQueries({ queryKey: ['dashboard'] });
               void qc.invalidateQueries({ queryKey: ['records'] });
-              handler.current(JSON.parse(e.data) as LiveNotification);
+              void qc.invalidateQueries({ queryKey: ['lessons'] });
+              const n = JSON.parse(e.data) as LiveNotification;
+              handler.current(n);
+              showSystemNotification(n);
+            } else if (e.event === 'lessons-changed') {
+              // The headmaster changed the timetable, a holiday or a lesson: reload lists.
+              for (const key of ['lessons', 'dashboard', 'progress', 'curriculum', 'timetable'])
+                void qc.invalidateQueries({ queryKey: [key] });
             } else if (e.event === 'session-ended') {
               stopped = true;
               void qc.invalidateQueries({ queryKey: meKey });

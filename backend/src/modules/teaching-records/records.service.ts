@@ -360,28 +360,26 @@ export async function editRecord(
     });
     const title = `${actor.fullName} edited the record for ${record.assignment.subject.name}, ${record.assignment.schoolClass.name}`;
     const body = `Changed: ${changed.map((f) => FIELD_LABELS[f] ?? f).join(', ')}. Week ${record.weekNumber}, lesson of ${fromDbDate(record.lesson.date)} at ${minutesToTime(record.lesson.startMinute)}.`;
+    // One notice per record and headmaster: a later edit brings it back to the top, unread.
     for (const h of headmasters) {
-      const unread = await tx.notification.findFirst({
-        where: { recipientId: h.id, recordId: record.id, type: 'RECORD_EDITED', readAt: null },
-        select: { id: true },
-      });
-      if (unread) {
-        await tx.notification.update({
-          where: { id: unread.id },
-          data: { title, body, createdAt: new Date() },
-        });
-      } else {
-        await tx.notification.create({
-          data: {
-            schoolId: actor.schoolId,
+      await tx.notification.upsert({
+        where: {
+          recipientId_type_recordId: {
             recipientId: h.id,
             type: 'RECORD_EDITED',
             recordId: record.id,
-            title,
-            body,
           },
-        });
-      }
+        },
+        update: { title, body, createdAt: new Date(), readAt: null },
+        create: {
+          schoolId: actor.schoolId,
+          recipientId: h.id,
+          type: 'RECORD_EDITED',
+          recordId: record.id,
+          title,
+          body,
+        },
+      });
     }
     return { recipientIds: headmasters.map((h) => h.id), title, body };
   });

@@ -7,7 +7,17 @@ import { EventEmitter } from 'node:events';
  * for one instance, memory is the simplest correct choice.
  */
 export type LiveEvent =
-  | { type: 'notification'; notification: { title: string; body: string; recordId: string | null } }
+  | {
+      type: 'notification';
+      notification: {
+        title: string;
+        body: string;
+        recordId: string | null;
+        lessonId?: string | null;
+      };
+    }
+  /** The school's lessons changed (timetable, holidays, decisions): open lists reload. */
+  | { type: 'lessons-changed' }
   /** Closes live connections: one session's (sign-out) or all of a user's (deactivation, reset). */
   | { type: 'session-ended'; sessionId?: string };
 

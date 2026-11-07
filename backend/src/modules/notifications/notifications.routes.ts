@@ -39,6 +39,7 @@ notificationsRouter.get('/notifications', async (req, res) => {
       title: n.title,
       body: n.body,
       recordId: n.recordId,
+      lessonId: n.lessonId,
       readAt: n.readAt,
       createdAt: n.createdAt,
     })),
@@ -95,6 +96,7 @@ notificationsRouter.get('/notifications/stream', (req, res) => {
 
   const unsubscribe = subscribe(a.userId, (event) => {
     if (event.type === 'notification') send('notification', event.notification);
+    else if (event.type === 'lessons-changed') send('lessons-changed', {});
     else if (
       event.type === 'session-ended' &&
       (!event.sessionId || event.sessionId === a.sessionId)

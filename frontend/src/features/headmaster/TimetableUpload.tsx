@@ -267,7 +267,7 @@ export function TimetableUpload({
               </Alert>
             </div>
           )}
-          <div className="max-h-[32rem] overflow-auto">
+          <div className="overflow-x-auto">
             <table className="table min-w-[44rem]">
               <thead>
                 <tr>

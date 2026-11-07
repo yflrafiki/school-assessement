@@ -7,6 +7,7 @@ import { logger } from './config/logger.js';
 import { requestId } from './middleware/requestId.js';
 import { loadSession, requireAuth, requireJson } from './middleware/session.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { announceLessonChanges } from './middleware/announceLessonChanges.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
@@ -114,6 +115,7 @@ export function createApp() {
 
   // Everything below requires a signed-in user; school scope comes from the session.
   api.use(requireAuth);
+  api.use(announceLessonChanges);
   api.use(teachersRouter);
   api.use(assignmentsRouter);
   api.use(schoolsRouter);

@@ -34,7 +34,10 @@ export function SettingsPage() {
         title="Settings"
         description="Term dates, week dates, classes, languages, holidays and absences. Changes here update the lessons at once, and every change is kept in the history."
       />
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line" role="tablist">
+      <div
+        className="scroll-hidden mb-4 flex gap-1 overflow-x-auto border-b border-line"
+        role="tablist"
+      >
         {TABS.map((t) => (
           <button
             key={t.id}

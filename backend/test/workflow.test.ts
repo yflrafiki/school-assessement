@@ -297,6 +297,21 @@ describe('live notifications', () => {
       expect(edited).toHaveLength(1);
       expect(edited[0]!.body).toMatch(/^Changed: learning outcomes/);
 
+      // After the headmaster has read it, the next edit brings the same notice back, unread.
+      expectOk(await w.head.patch(`/notifications/${edited[0]!.id}/read`));
+      expectOk(
+        await w.teacher.patch(`/teaching-records/${recordId}`, {
+          challenges: 'Two learners were absent.',
+        }),
+      );
+      const again = await prisma.notification.findMany({ where: { type: 'RECORD_EDITED' } });
+      expect(again).toHaveLength(1);
+      expect(again[0]!.readAt).toBeNull();
+      expect(again[0]!.body).toMatch(/^Changed: challenges/);
+      await stream.waitFor(
+        () => stream.events.filter((e) => e.event === 'notification').length === 3,
+      );
+
       // Saving the same text again changes nothing and tells nobody.
       expectOk(
         await w.teacher.patch(`/teaching-records/${recordId}`, {
@@ -304,7 +319,7 @@ describe('live notifications', () => {
         }),
       );
       await new Promise((r) => setTimeout(r, 300));
-      expect(stream.events.filter((e) => e.event === 'notification')).toHaveLength(2);
+      expect(stream.events.filter((e) => e.event === 'notification')).toHaveLength(3);
     } finally {
       stream.close();
     }
