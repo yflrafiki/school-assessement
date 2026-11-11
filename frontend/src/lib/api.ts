@@ -1,4 +1,5 @@
 import type { ApiErrorBody, ErrorCode, PageMeta } from '@school/shared';
+import { isInstalledApp } from './installedApp';
 
 /** Error thrown for every non-2xx response, carrying the server's code and field errors. */
 export class ApiError extends Error {
@@ -19,16 +20,20 @@ export class ApiError extends Error {
 }
 
 /**
- * The session token lives in sessionStorage, which the browser keeps separate for every tab.
- * That is what lets a headmaster and a teacher be signed in side by side in two tabs.
- * A refresh keeps the tab signed in; closing the tab forgets it.
+ * In a browser tab the session token lives in sessionStorage, which the browser keeps separate
+ * for every tab: that is what lets a headmaster and a teacher be signed in side by side in two
+ * tabs. A refresh keeps the tab signed in; closing the tab forgets it.
+ * The installed app (home-screen icon) is one person's own phone and has no tabs, so there the
+ * token is kept in localStorage: reopening the app keeps them signed in, until the session
+ * itself ends (2 hours unused, 12 hours at most, or signing out).
  */
 const SESSION_KEY = 'teaching-monitor.session';
+const tokenStore = (): Storage => (isInstalledApp() ? localStorage : sessionStorage);
 let onUnauthenticated: (() => void) | undefined;
 
 export function getSessionToken(): string | null {
   try {
-    return sessionStorage.getItem(SESSION_KEY);
+    return tokenStore().getItem(SESSION_KEY);
   } catch {
     return null;
   }
@@ -36,8 +41,8 @@ export function getSessionToken(): string | null {
 
 export function setSessionToken(token: string | null) {
   try {
-    if (token) sessionStorage.setItem(SESSION_KEY, token);
-    else sessionStorage.removeItem(SESSION_KEY);
+    if (token) tokenStore().setItem(SESSION_KEY, token);
+    else tokenStore().removeItem(SESSION_KEY);
   } catch {
     // Storage blocked (for example strict privacy settings): the tab simply stays signed out.
   }

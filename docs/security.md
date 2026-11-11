@@ -36,6 +36,7 @@ What the system protects: teachers' and headmasters' accounts, lesson records, a
 - Each browser tab holds its own session token in `sessionStorage` and sends it as `Authorization: Bearer <token>`, so different users can be signed in side by side in different tabs. A new tab starts signed out; closing the tab forgets the token.
 - Browsers copy `sessionStorage` when a tab is duplicated or a link is opened in a new tab. The copy notices (over a `BroadcastChannel`) and swaps the shared token for its own session (`POST /auth/sessions/fork`), so signing out in one tab never ends another.
 - Lifetimes: 2 hours idle, 12 hours in total. An open tab stays signed in because it keeps contacting the server.
+- Installed app (PWA, added 11 Nov 2026): when the site runs from the home screen (`display-mode: standalone`), the token is kept in localStorage instead, so reopening the app keeps a teacher signed in on their own phone. The session limits still apply (2 hours idle, 12 hours total, sign-out, password change). The service worker never caches `/api` responses; it only keeps the app shell and fingerprinted build files, so no school data is stored on the device. `sw.js` and the manifest are served with `Cache-Control: no-cache` so updates reach phones at once.
 - Trade-off (decided 28 Oct 2026): unlike an httpOnly cookie, the token is readable by scripts on the page, so preventing cross-site scripting is what protects it. Keep the CSP strict and never add third-party scripts.
 
 ## Requests and headers

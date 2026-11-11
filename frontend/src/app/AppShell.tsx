@@ -23,6 +23,7 @@ import {
 import type { Permission } from '@school/shared';
 import { api, setSessionToken } from '../lib/api';
 import { APP_NAME, SCHOOL_NAME } from '../lib/brand';
+import { InstallAppBanner, OfflineBanner } from '../features/install/AppBanners';
 import { useCurrentUser } from '../features/auth/useMe';
 import { NotificationBell } from '../features/notifications/NotificationBell';
 import { LiveToast } from '../features/notifications/LiveToast';
@@ -253,6 +254,8 @@ export function AppShell({ area }: { area: 'teacher' | 'headmaster' | 'admin' })
       </header>
 
       <main id="main" className="mx-auto max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:pb-8">
+        <OfflineBanner />
+        <InstallAppBanner />
         <Outlet />
       </main>
 

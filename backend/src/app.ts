@@ -137,7 +137,18 @@ export function createApp() {
   // because each tab keeps its session token in sessionStorage.
   if (env.WEB_DIST_DIR) {
     const dir = path.resolve(env.WEB_DIST_DIR);
-    app.use(express.static(dir, { index: false, maxAge: '1h' }));
+    // The service worker and app manifest are re-checked on every visit, so a new version of
+    // the installed app reaches phones at once.
+    app.use(
+      express.static(dir, {
+        index: false,
+        maxAge: '1h',
+        setHeaders: (res, file) => {
+          if (/[\\/](sw\.js|manifest\.webmanifest)$/.test(file))
+            res.setHeader('Cache-Control', 'no-cache');
+        },
+      }),
+    );
     app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(dir, 'index.html')));
   }
 

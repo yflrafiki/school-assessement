@@ -81,6 +81,34 @@ function Glossary() {
   );
 }
 
+/** Same steps for everyone: the app is installed from the browser, not an app store. */
+function InstallTopic() {
+  return (
+    <Topic title="Install the app on your phone">
+      <p>There is no app store download: the app installs straight from this website.</p>
+      <ul className="list-disc space-y-1 pl-5">
+        <li>
+          <strong>Android (Chrome):</strong> press <strong>Install</strong> on the banner at the top
+          of the page, or open the menu (⋮) and choose <strong>Install app</strong> or{' '}
+          <strong>Add to Home screen</strong>.
+        </li>
+        <li>
+          <strong>iPhone or iPad (Safari):</strong> tap <strong>Share</strong> (the square with an
+          arrow), then <strong>Add to Home Screen</strong>.
+        </li>
+        <li>
+          <strong>Computer (Chrome or Edge):</strong> press the install icon at the right of the
+          address bar.
+        </li>
+      </ul>
+      <p>
+        Open it from the IPEL icon on your home screen. It keeps you signed in until you have not
+        used it for 2 hours (12 hours at most), and it needs the internet to load and save lessons.
+      </p>
+    </Topic>
+  );
+}
+
 function TeacherHelp() {
   return (
     <>
@@ -156,6 +184,7 @@ function TeacherHelp() {
             <em>Timetable</em>.
           </p>
         </Topic>
+        <InstallTopic />
         <Topic title="Signing in on a phone or a shared computer">
           <p>
             Each browser tab has its own sign-in, so two people can use two tabs on one computer.
@@ -299,6 +328,7 @@ function HeadmasterHelp() {
             in, open them under Teachers and press <strong>Deactivate</strong>.
           </p>
         </Topic>
+        <InstallTopic />
         <Topic title="Why can't I delete something?">
           <p>
             Lesson records are the school&apos;s evidence, so anything they depend on cannot be
