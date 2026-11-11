@@ -16,6 +16,7 @@ import { fromDbDate, toDbDate } from '../../lib/dates.js';
 import { audit } from '../../lib/audit.js';
 import {
   lockAssignmentsInOrder,
+  newSyncCache,
   syncAssignment,
   syncSchoolAssignments,
 } from '../lessons/lessons.service.js';
@@ -333,7 +334,10 @@ export async function updateTerm(
           where: { ...slots, validTo: { gt: toDbDate(end) } },
           data: { validTo: toDbDate(end) },
         });
-        for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: true });
+        {
+          const cache = newSyncCache();
+          for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: true }, cache);
+        }
       }
       await audit(tx, {
         ...auditFor(actor),

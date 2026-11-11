@@ -14,7 +14,7 @@ import { audit } from '../../lib/audit.js';
 import { pageArgs, pageMeta } from '../../lib/pagination.js';
 import { paceLessons } from './pacing.js';
 import { lessonState } from './lessonState.js';
-import { isSpecialWeekDate, loadTermCalendar } from './weekKinds.js';
+import { isSpecialWeekDate, loadTermCalendar, type TermCalendar } from './weekKinds.js';
 
 // ---------- Locking ----------
 
@@ -41,9 +41,18 @@ export async function lockAssignment(
   return rows[0] ?? null;
 }
 
-/** Locks several assignments one at a time in id order, so concurrent school-wide changes cannot deadlock. */
+/**
+ * Locks several assignments in id order, so concurrent school-wide changes cannot deadlock.
+ * One statement: ORDER BY with FOR UPDATE locks the rows in the order they are returned.
+ */
 export async function lockAssignmentsInOrder(tx: Tx, schoolId: string, ids: string[]) {
-  for (const id of [...new Set(ids)].sort()) await lockAssignment(tx, schoolId, id);
+  const sorted = [...new Set(ids)].sort();
+  if (!sorted.length) return;
+  await tx.$queryRaw`
+    SELECT id FROM teaching_assignments
+    WHERE id = ANY(${sorted}::uuid[]) AND school_id = ${schoolId}::uuid
+    ORDER BY id
+    FOR UPDATE`;
 }
 
 // ---------- Closed days ----------
@@ -74,13 +83,41 @@ export interface SyncResult {
 }
 
 /**
+ * What several syncs in one transaction share: the school's closed days, each class's term
+ * calendar and each teacher's absences are read once, not once per subject. Only valid within
+ * one transaction that does not change them.
+ */
+export interface SyncCache {
+  closed?: Set<string>;
+  calendars: Map<string, TermCalendar>;
+  absences: Map<string, { startDate: Date; endDate: Date }[]>;
+}
+
+export const newSyncCache = (): SyncCache => ({ calendars: new Map(), absences: new Map() });
+
+type SystemCancelReason = 'HOLIDAY' | 'SPECIAL_WEEK' | 'ABSENCE';
+
+/** Sets each lesson's curriculum week in one statement, not one call per lesson. */
+async function setLessonWeeks(tx: Tx, changes: { id: string; week: number | null }[]) {
+  if (!changes.length) return;
+  const ids = changes.map((c) => c.id);
+  const weeks = changes.map((c) => c.week);
+  await tx.$executeRaw`
+    UPDATE lessons AS l SET week_number = v.week, updated_at = now()
+    FROM unnest(${ids}::uuid[], ${weeks}::int[]) AS v(id, week)
+    WHERE l.id = v.id`;
+}
+
+/**
  * Brings one assignment's lessons in line with its timetable, the calendar, absences and
  * special weeks, then re-paces them onto curriculum weeks. The caller must hold the assignment lock.
+ * Changes are written in batches: on a remote database every call is a round trip.
  */
 export async function syncAssignment(
   tx: Tx,
   assignmentId: string,
   opts: { generate: boolean },
+  cache: SyncCache = newSyncCache(),
 ): Promise<SyncResult> {
   const assignment = await tx.teachingAssignment.findUniqueOrThrow({
     where: { id: assignmentId },
@@ -125,6 +162,8 @@ export async function syncAssignment(
       where: { assignmentId, timetableEntryId: { not: null } },
       include: { record: { select: { id: true, status: true } } },
     });
+    const remove: string[] = [];
+    const cancelDraft: string[] = [];
     for (const l of generated) {
       if (wantedKeys.has(`${fromDbDate(l.date)}|${l.startMinute}`)) continue;
       // Untouched: scheduled, or cancelled by the system (holiday, absence, special week).
@@ -132,49 +171,66 @@ export async function syncAssignment(
       const untouched =
         l.status === 'SCHEDULED' ||
         (l.status === 'CANCELLED' && l.cancelReason !== 'SCHOOL_CANCELLATION');
-      if (!l.record && untouched) {
-        await tx.lesson.delete({ where: { id: l.id } });
-        lessonsRemoved += 1;
-      } else if (l.status === 'SCHEDULED' && l.record?.status === 'DRAFT') {
-        // A draft keeps the lesson as history; submitted work is never touched.
-        await tx.lesson.update({
-          where: { id: l.id },
-          data: {
-            status: 'CANCELLED',
-            cancelReason: 'SCHOOL_CANCELLATION',
-            reason: 'Timetable slot removed',
-          },
-        });
-      }
+      if (!l.record && untouched) remove.push(l.id);
+      // A draft keeps the lesson as history; submitted work is never touched.
+      else if (l.status === 'SCHEDULED' && l.record?.status === 'DRAFT') cancelDraft.push(l.id);
+    }
+    if (remove.length) {
+      lessonsRemoved = (await tx.lesson.deleteMany({ where: { id: { in: remove } } })).count;
+    }
+    if (cancelDraft.length) {
+      await tx.lesson.updateMany({
+        where: { id: { in: cancelDraft } },
+        data: {
+          status: 'CANCELLED',
+          cancelReason: 'SCHOOL_CANCELLATION',
+          reason: 'Timetable slot removed',
+        },
+      });
     }
   }
 
-  const calendar = await loadTermCalendar(
-    tx,
-    schoolId,
-    assignment.termId,
-    assignment.classId,
-    assignment.schoolClass.level,
-  );
-  const closed = await closedDates(tx, schoolId);
-  const absences = await tx.absence.findMany({
-    where: {
+  let calendar = cache.calendars.get(assignment.classId);
+  if (!calendar) {
+    calendar = await loadTermCalendar(
+      tx,
       schoolId,
-      teacherProfileId: assignment.teacherProfileId,
-      revokedAt: null,
-      startDate: { lte: assignment.term.endDate },
-      endDate: { gte: assignment.term.startDate },
-    },
-  });
+      assignment.termId,
+      assignment.classId,
+      assignment.schoolClass.level,
+    );
+    cache.calendars.set(assignment.classId, calendar);
+  }
+  const closed = (cache.closed ??= await closedDates(tx, schoolId));
+  let absences = cache.absences.get(assignment.teacherProfileId);
+  if (!absences) {
+    absences = await tx.absence.findMany({
+      where: {
+        schoolId,
+        teacherProfileId: assignment.teacherProfileId,
+        revokedAt: null,
+        startDate: { lte: assignment.term.endDate },
+        endDate: { gte: assignment.term.startDate },
+      },
+      select: { startDate: true, endDate: true },
+    });
+    cache.absences.set(assignment.teacherProfileId, absences);
+  }
+  const teacherAbsences = absences;
   const lessons = await tx.lesson.findMany({
     where: { assignmentId },
     include: { record: { select: { status: true } } },
   });
 
   const absent = (date: string) =>
-    absences.some((a) => fromDbDate(a.startDate) <= date && date <= fromDbDate(a.endDate));
+    teacherAbsences.some((a) => fromDbDate(a.startDate) <= date && date <= fromDbDate(a.endDate));
 
   // Reconcile system cancellations. Manual decisions and submitted work are left alone.
+  // Changes are grouped by their new status, one update per group.
+  const changed = new Map<
+    string,
+    { status: 'CANCELLED' | 'SCHEDULED'; reason: SystemCancelReason | null; ids: string[] }
+  >();
   for (const l of lessons) {
     const manual =
       l.status === 'RESCHEDULED' ||
@@ -193,13 +249,19 @@ export async function syncAssignment(
           : null;
     const status = reason ? 'CANCELLED' : 'SCHEDULED';
     if (l.status !== status || l.cancelReason !== reason) {
-      await tx.lesson.update({
-        where: { id: l.id },
-        data: { status, cancelReason: reason, reason: null },
-      });
+      const key = `${status}|${reason ?? ''}`;
+      const group = changed.get(key) ?? { status, reason, ids: [] };
+      group.ids.push(l.id);
+      changed.set(key, group);
       l.status = status;
       l.cancelReason = reason;
     }
+  }
+  for (const g of changed.values()) {
+    await tx.lesson.updateMany({
+      where: { id: { in: g.ids } },
+      data: { status: g.status, cancelReason: g.reason, reason: null },
+    });
   }
 
   const perWeek = assignment.timetableEntries.length;
@@ -215,11 +277,12 @@ export async function syncAssignment(
     calendar.requiredWeeks,
     perWeek,
   );
-  for (const l of lessons) {
-    const week = pacing.weeks.get(l.id) ?? null;
-    if (week !== l.weekNumber)
-      await tx.lesson.update({ where: { id: l.id }, data: { weekNumber: week } });
-  }
+  await setLessonWeeks(
+    tx,
+    lessons
+      .map((l) => ({ id: l.id, week: pacing.weeks.get(l.id) ?? null, was: l.weekNumber }))
+      .filter((c) => c.week !== c.was),
+  );
 
   const previousPerWeek = assignment.pacedPerWeek;
   if (opts.generate && previousPerWeek !== perWeek) {
@@ -252,10 +315,13 @@ export async function syncSchoolAssignments(
     select: { id: true },
     orderBy: { id: 'asc' },
   });
-  for (const a of assignments) {
-    await lockAssignment(tx, schoolId, a.id);
-    await syncAssignment(tx, a.id, { generate: false });
-  }
+  await lockAssignmentsInOrder(
+    tx,
+    schoolId,
+    assignments.map((a) => a.id),
+  );
+  const cache = newSyncCache();
+  for (const a of assignments) await syncAssignment(tx, a.id, { generate: false }, cache);
   return assignments.length;
 }
 
@@ -586,7 +652,10 @@ export async function waiveLessonsBefore(
           decidedAt: new Date(),
         },
       });
-      for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: false });
+      {
+        const cache = newSyncCache();
+        for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: false }, cache);
+      }
       await audit(tx, {
         schoolId: actor.schoolId,
         actorId: actor.userId,
@@ -709,7 +778,10 @@ export async function createAbsence(
     });
     const ids = await teacherAssignmentIds(tx, actor.schoolId, teacher.id);
     await lockAssignmentsInOrder(tx, actor.schoolId, ids);
-    for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: false });
+    {
+      const cache = newSyncCache();
+      for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: false }, cache);
+    }
     await audit(tx, {
       schoolId: actor.schoolId,
       actorId: actor.userId,
@@ -740,7 +812,10 @@ export async function revokeAbsence(actor: Actor, absenceId: string) {
     });
     const ids = await teacherAssignmentIds(tx, actor.schoolId, absence.teacherProfileId);
     await lockAssignmentsInOrder(tx, actor.schoolId, ids);
-    for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: false });
+    {
+      const cache = newSyncCache();
+      for (const id of [...ids].sort()) await syncAssignment(tx, id, { generate: false }, cache);
+    }
     await audit(tx, {
       schoolId: actor.schoolId,
       actorId: actor.userId,

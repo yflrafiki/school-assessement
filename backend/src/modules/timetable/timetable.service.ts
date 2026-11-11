@@ -8,7 +8,13 @@ import { prisma, type Tx } from '../../lib/db.js';
 import { AppError, isExclusionViolation, notFound } from '../../lib/errors.js';
 import { fromDbDate, toDbDate } from '../../lib/dates.js';
 import { audit } from '../../lib/audit.js';
-import { lockAssignment, syncAssignment, type SyncResult } from '../lessons/lessons.service.js';
+import {
+  lockAssignment,
+  lockAssignmentsInOrder,
+  newSyncCache,
+  syncAssignment,
+  type SyncResult,
+} from '../lessons/lessons.service.js';
 
 interface Actor {
   schoolId: string;
@@ -335,12 +341,6 @@ export interface ImportedRow extends TimetableImportRow {
   error?: string;
 }
 
-class ImportRollback extends Error {
-  constructor(readonly result: { rows: ImportedRow[]; created: number; replaced: number }) {
-    super('timetable import rolled back');
-  }
-}
-
 /**
  * Saves a whole uploaded timetable in one transaction. Each row is matched to the class's
  * assigned subject (and so its teacher). The classes in the file get exactly the file's slots:
@@ -357,119 +357,189 @@ export async function importTimetable(
   });
   if (!term) throw notFound('Term');
 
-  try {
-    return await prisma.$transaction(
-      async (tx) => {
-        const classes = await tx.schoolClass.findMany({ where: { schoolId: actor.schoolId } });
-        const classByName = new Map(classes.map((c) => [squash(c.name), c]));
-        // "Form 1" and "JHS 1" mean Basic 7. When the school has one class at that level,
-        // that is the class meant.
-        const classByLevelName = (name: string) => {
-          const m = squash(name).match(/^(form|jhs|basic|b)(\d)$/);
-          if (!m) return undefined;
-          const n = Number(m[2]);
-          const level = m[1] === 'form' || m[1] === 'jhs' ? n + 6 : n;
-          const atLevel = classes.filter((c) => c.isActive && c.level === `BASIC_${level}`);
-          return atLevel.length === 1 ? atLevel[0] : undefined;
-        };
-        const assignments = await tx.teachingAssignment.findMany({
-          where: { schoolId: actor.schoolId, termId: term.id, isActive: true },
-          include: {
-            subject: { include: { parent: { select: { code: true } } } },
-            teacherProfile: { include: { user: { select: { fullName: true } } } },
-          },
-        });
+  return prisma.$transaction(
+    async (tx) => {
+      const classes = await tx.schoolClass.findMany({ where: { schoolId: actor.schoolId } });
+      const classByName = new Map(classes.map((c) => [squash(c.name), c]));
+      // "Form 1" and "JHS 1" mean Basic 7. When the school has one class at that level,
+      // that is the class meant.
+      const classByLevelName = (name: string) => {
+        const m = squash(name).match(/^(form|jhs|basic|b)(\d)$/);
+        if (!m) return undefined;
+        const n = Number(m[2]);
+        const level = m[1] === 'form' || m[1] === 'jhs' ? n + 6 : n;
+        const atLevel = classes.filter((c) => c.isActive && c.level === `BASIC_${level}`);
+        return atLevel.length === 1 ? atLevel[0] : undefined;
+      };
+      const assignments = await tx.teachingAssignment.findMany({
+        where: { schoolId: actor.schoolId, termId: term.id, isActive: true },
+        include: {
+          subject: { include: { parent: { select: { code: true } } } },
+          teacherProfile: { include: { user: { select: { fullName: true } } } },
+        },
+      });
 
-        const out: ImportedRow[] = input.rows.map((r, i) => ({ ...r, row: i + 1 }));
-        const matched: { row: ImportedRow; assignmentId: string }[] = [];
-        for (const r of out) {
-          if (timeToMinutes(r.startTime) >= timeToMinutes(r.endTime)) {
-            r.error = 'The end time must be after the start time';
-            continue;
-          }
-          const cls = classByName.get(squash(r.className)) ?? classByLevelName(r.className);
-          if (!cls) {
-            r.error = `There is no class called "${r.className}". Add it in Settings → Classes, or correct the name.`;
-            continue;
-          }
-          const own = assignments.filter((a) => a.classId === cls.id);
-          const wanted = squash(r.subject);
-          const code = SUBJECT_SHORT_FORMS[wanted];
-          const hits = own.filter((a) => squash(a.subject.name) === wanted);
-          const byCode = hits.length
-            ? hits
-            : own.filter(
-                (a) => code && (a.subject.code === code || a.subject.parent?.code === code),
-              );
-          if (byCode.length !== 1) {
-            r.error = byCode.length
-              ? `"${r.subject}" matches more than one subject of ${cls.name}. Use the full subject name.`
-              : `No teacher is assigned to "${r.subject}" for ${cls.name}. Assign one under Subjects and classes, or correct the subject.`;
-            continue;
-          }
-          const a = byCode[0]!;
-          r.className = cls.name;
-          r.matchedSubject = a.subject.name;
-          r.teacher = a.teacherProfile.user.fullName;
-          matched.push({ row: r, assignmentId: a.id });
+      const out: ImportedRow[] = input.rows.map((r, i) => ({ ...r, row: i + 1 }));
+      const matched: { row: ImportedRow; assignment: (typeof assignments)[number] }[] = [];
+      for (const r of out) {
+        if (timeToMinutes(r.startTime) >= timeToMinutes(r.endTime)) {
+          r.error = 'The end time must be after the start time';
+          continue;
         }
-
-        // The classes in the file get exactly the file's slots.
-        const classIds = [
-          ...new Set(matched.map((m) => assignments.find((a) => a.id === m.assignmentId)!.classId)),
-        ];
-        const { count: replaced } = await tx.timetableEntry.updateMany({
-          where: {
-            schoolId: actor.schoolId,
-            deletedAt: null,
-            classId: { in: classIds },
-            assignment: { termId: term.id },
-          },
-          data: { deletedAt: new Date() },
-        });
-
-        let created = 0;
-        for (const m of matched) {
-          try {
-            await insertEntry(tx, actor, {
-              assignmentId: m.assignmentId,
-              weekday: m.row.weekday,
-              startTime: m.row.startTime,
-              endTime: m.row.endTime,
-            });
-            created += 1;
-          } catch (err) {
-            // A clash is found by a read before the insert, so the transaction stays usable.
-            if (err instanceof AppError && err.code === 'CONFLICT') m.row.error = err.message;
-            else throw err;
-          }
+        const cls = classByName.get(squash(r.className)) ?? classByLevelName(r.className);
+        if (!cls) {
+          r.error = `There is no class called "${r.className}". Add it in Settings → Classes, or correct the name.`;
+          continue;
         }
+        const own = assignments.filter((a) => a.classId === cls.id);
+        const wanted = squash(r.subject);
+        const code = SUBJECT_SHORT_FORMS[wanted];
+        const hits = own.filter((a) => squash(a.subject.name) === wanted);
+        const byCode = hits.length
+          ? hits
+          : own.filter((a) => code && (a.subject.code === code || a.subject.parent?.code === code));
+        if (byCode.length !== 1) {
+          r.error = byCode.length
+            ? `"${r.subject}" matches more than one subject of ${cls.name}. Use the full subject name.`
+            : `No teacher is assigned to "${r.subject}" for ${cls.name}. Assign one under Subjects and classes, or correct the subject.`;
+          continue;
+        }
+        const a = byCode[0]!;
+        r.className = cls.name;
+        r.matchedSubject = a.subject.name;
+        r.teacher = a.teacherProfile.user.fullName;
+        matched.push({ row: r, assignment: a });
+      }
 
-        const result = { rows: out, created, replaced };
-        if (input.dryRun || out.some((r) => r.error)) throw new ImportRollback(result);
-        const touched = await tx.teachingAssignment.findMany({
-          where: { schoolId: actor.schoolId, termId: term.id, classId: { in: classIds } },
-          select: { id: true },
-          orderBy: { id: 'asc' },
-        });
-        for (const a of touched) await applySlotChange(tx, actor, a.id);
-        await audit(tx, {
+      // The classes in the file get exactly the file's slots: their current slots this term
+      // are replaced. Every other slot that overlaps the term stays, and can clash.
+      const classIds = [...new Set(matched.map((m) => m.assignment.classId))];
+      const replacing = {
+        schoolId: actor.schoolId,
+        deletedAt: null,
+        classId: { in: classIds },
+        assignment: { termId: term.id },
+      };
+      const staying = await tx.timetableEntry.findMany({
+        where: {
           schoolId: actor.schoolId,
-          actorId: actor.userId,
-          action: 'timetable.imported',
-          entityType: 'Term',
-          entityId: term.id,
-          metadata: { rows: out.length, created, replaced, classes: classIds.length },
-          requestId: actor.requestId,
+          deletedAt: null,
+          validFrom: { lte: term.endDate },
+          validTo: { gte: term.startDate },
+          NOT: { classId: { in: classIds }, assignment: { termId: term.id } },
+        },
+        include: entryInclude,
+      });
+      const className = new Map(classes.map((c) => [c.id, c.name]));
+
+      // Clashes are checked here in memory (a remote database makes a check per row slow).
+      // The database's exclusion constraints still refuse any overlap that gets past this.
+      const taken = staying.map((e) => ({
+        teacherProfileId: e.teacherProfileId,
+        classId: e.classId,
+        weekday: e.weekday,
+        startMinute: e.startMinute,
+        endMinute: e.endMinute,
+        teacher: e.assignment.teacherProfile.user.fullName,
+        subject: e.assignment.subject.name,
+        className: e.assignment.schoolClass.name,
+      }));
+      const accepted: typeof matched = [];
+      for (const m of matched) {
+        const slot = {
+          teacherProfileId: m.assignment.teacherProfileId,
+          classId: m.assignment.classId,
+          weekday: m.row.weekday,
+          startMinute: timeToMinutes(m.row.startTime),
+          endMinute: timeToMinutes(m.row.endTime),
+          teacher: m.assignment.teacherProfile.user.fullName,
+          subject: m.assignment.subject.name,
+          className: className.get(m.assignment.classId) ?? '',
+        };
+        const clash = taken.find(
+          (t) =>
+            t.weekday === slot.weekday &&
+            t.startMinute < slot.endMinute &&
+            t.endMinute > slot.startMinute &&
+            (t.teacherProfileId === slot.teacherProfileId || t.classId === slot.classId),
+        );
+        if (clash) {
+          const who =
+            clash.teacherProfileId === slot.teacherProfileId
+              ? `${clash.teacher} already teaches`
+              : `${clash.className} already has`;
+          m.row.error = `${who} ${clash.subject} (${clash.className}) from ${minutesToTime(clash.startMinute)} to ${minutesToTime(clash.endMinute)} on that day`;
+          continue;
+        }
+        taken.push(slot);
+        accepted.push(m);
+      }
+
+      const created = accepted.length;
+      // A check, or a file with problems, saves nothing.
+      if (input.dryRun || out.some((r) => r.error)) {
+        const replaced = await tx.timetableEntry.count({ where: replacing });
+        return { rows: out, created, replaced };
+      }
+
+      const { count: replaced } = await tx.timetableEntry.updateMany({
+        where: replacing,
+        data: { deletedAt: new Date() },
+      });
+      try {
+        await tx.timetableEntry.createMany({
+          data: accepted.map((m) => ({
+            schoolId: actor.schoolId,
+            assignmentId: m.assignment.id,
+            teacherProfileId: m.assignment.teacherProfileId,
+            classId: m.assignment.classId,
+            weekday: m.row.weekday,
+            startMinute: timeToMinutes(m.row.startTime),
+            endMinute: timeToMinutes(m.row.endTime),
+            validFrom: term.startDate,
+            validTo: term.endDate,
+          })),
         });
-        return result;
-      },
-      { timeout: 120_000 },
-    );
-  } catch (err) {
-    if (!(err instanceof ImportRollback)) throw err;
-    return err.result;
-  }
+      } catch (err) {
+        // Someone else saved an overlapping slot at the same moment.
+        if (isExclusionViolation(err))
+          throw new AppError(
+            'CONFLICT',
+            'Another change to the timetable was saved at the same time. Upload the file again.',
+          );
+        throw err;
+      }
+      const result = { rows: out, created, replaced };
+
+      // The new slots take effect at once: every subject of these classes gets its lessons.
+      const touched = await tx.teachingAssignment.findMany({
+        where: {
+          schoolId: actor.schoolId,
+          termId: term.id,
+          classId: { in: classIds },
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (await tx.termWeek.count({ where: { termId: term.id } })) {
+        const ids = touched.map((a) => a.id).sort();
+        await lockAssignmentsInOrder(tx, actor.schoolId, ids);
+        const cache = newSyncCache();
+        for (const id of ids) await syncAssignment(tx, id, { generate: true }, cache);
+      }
+      await audit(tx, {
+        schoolId: actor.schoolId,
+        actorId: actor.userId,
+        action: 'timetable.imported',
+        entityType: 'Term',
+        entityId: term.id,
+        metadata: { rows: out.length, created, replaced, classes: classIds.length },
+        requestId: actor.requestId,
+      });
+      return result;
+    },
+    { timeout: 120_000 },
+  );
 }
 
 /**
@@ -502,10 +572,15 @@ export async function publish(
           select: { id: true },
           orderBy: { id: 'asc' },
         });
+        await lockAssignmentsInOrder(
+          tx,
+          actor.schoolId,
+          assignments.map((a) => a.id),
+        );
+        const cache = newSyncCache();
         const out: SyncResult[] = [];
         for (const a of assignments) {
-          await lockAssignment(tx, actor.schoolId, a.id);
-          out.push(await syncAssignment(tx, a.id, { generate: true }));
+          out.push(await syncAssignment(tx, a.id, { generate: true }, cache));
         }
 
         const needsConfirm = out.filter(
