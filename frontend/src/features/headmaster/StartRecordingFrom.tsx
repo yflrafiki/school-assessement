@@ -7,11 +7,16 @@ import { Section } from '../../components/PageHeader';
 import { Alert } from '../../components/States';
 import type { Term } from '../../types/api';
 
-/** Monday of the current week, in the school's time zone (Africa/Accra is UTC). */
-function thisMonday() {
+/**
+ * Monday of the current week, in the school's time zone (Africa/Accra is UTC), and the day
+ * offered first: on a weekend that is the coming Monday, when teachers next teach.
+ */
+function weekDates() {
   const today = new Date().toISOString().slice(0, 10);
   const weekday = new Date(`${today}T00:00:00Z`).getUTCDay() || 7;
-  return addDays(today, 1 - weekday);
+  const monday = addDays(today, 1 - weekday);
+  const nextMonday = addDays(monday, 7);
+  return { monday, nextMonday, suggested: weekday >= 6 ? nextMonday : monday };
 }
 
 /**
@@ -22,8 +27,8 @@ function thisMonday() {
 export function StartRecordingFrom({ term }: { term: Term }) {
   const qc = useQueryClient();
   const id = useId();
-  const [monday] = useState(thisMonday);
-  const [date, setDate] = useState(monday);
+  const [{ monday, nextMonday, suggested }] = useState(weekDates);
+  const [date, setDate] = useState(suggested);
   const [done, setDone] = useState<string | null>(null);
   const waive = useMutation({
     mutationFn: () =>
@@ -68,7 +73,7 @@ export function StartRecordingFrom({ term }: { term: Term }) {
               type="date"
               className="input w-auto"
               min={term.startDate}
-              max={addDays(monday, 6)}
+              max={nextMonday}
               value={date}
               onChange={(e) => {
                 setDate(e.target.value);

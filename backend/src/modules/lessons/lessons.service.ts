@@ -619,9 +619,12 @@ export async function waiveLessonsBefore(
   input: { termId: string; date: string; reason: string },
 ) {
   const now = await schoolNow(actor.schoolId);
-  if (input.date > now.date) {
+  // Up to the coming Monday, so it can be set up over a weekend for the week ahead. Later
+  // dates would waive lessons teachers are still expected to teach and record.
+  const nextMonday = addDays(now.date, 8 - isoWeekday(now.date));
+  if (input.date > nextMonday) {
     throw new AppError('VALIDATION_ERROR', 'Please check the date', {
-      fields: { date: ['Choose today or an earlier date'] },
+      fields: { date: [`Choose a day up to Monday ${nextMonday}`] },
     });
   }
   return prisma.$transaction(

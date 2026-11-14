@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/db.js';
+import { addDays } from '../src/lib/dates.js';
 import {
   createActiveTeacher,
   createSchoolWithHeadmaster,
@@ -62,6 +63,11 @@ describe('starting to use the system part-way through a term', () => {
     expect((await head.post('/lessons/waive-before', { termId, date: '2099-01-01' })).status).toBe(
       422,
     );
+    // The coming Monday is allowed (set up over the weekend); the day after it is not.
+    const nextMonday = addDays(thisMonday, 7);
+    expect(
+      (await head.post('/lessons/waive-before', { termId, date: addDays(nextMonday, 1) })).status,
+    ).toBe(422);
     const res = expectOk(await head.post('/lessons/waive-before', { termId, date: thisMonday }));
     expect(res.body.data.waived).toBe(3);
 
