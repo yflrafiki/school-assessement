@@ -12,8 +12,9 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { TopicText } from '../curriculum/TopicText';
 import type { CurriculumEntry, Lesson, TeachingRecord } from '../../types/api';
 import { unreadKey } from '../notifications/NotificationBell';
+import { AssessmentFields, type AssessmentValues } from '../records/AssessmentFields';
 
-interface Values {
+interface Values extends AssessmentValues {
   entryIds: string[];
   taughtSummary: string;
   topicNote: string;
@@ -29,6 +30,8 @@ const FIELDS = [
   'outcomes',
   'challenges',
   'remarks',
+  'assessments',
+  'assessmentNote',
 ] as const;
 
 /** The form opens from a lesson, so the date, week and slot are never typed in. */
@@ -131,6 +134,8 @@ function RecordForm({
       outcomes: draft?.outcomes ?? '',
       challenges: draft?.challenges ?? '',
       remarks: draft?.remarks ?? '',
+      assessments: draft?.assessments ?? [],
+      assessmentNote: draft?.assessmentNote ?? '',
     },
   });
   const { register, formState, setError, handleSubmit } = form;
@@ -153,6 +158,8 @@ function RecordForm({
         outcomes: values.outcomes,
         challenges: values.challenges,
         remarks: values.remarks,
+        assessments: Array.isArray(values.assessments) ? values.assessments : [],
+        assessmentNote: values.assessmentNote,
       }),
     onSuccess: (res, { status }) => {
       void qc.invalidateQueries({ queryKey: ['progress'] });
@@ -312,6 +319,15 @@ function RecordForm({
             <FormField label="Remarks" error={formState.errors.remarks?.message}>
               <textarea className="input" rows={2} {...register('remarks')} />
             </FormField>
+          </div>
+        </Section>
+
+        <Section title="Assignment or test">
+          <div className="px-4 py-4">
+            <AssessmentFields
+              register={register}
+              noteError={formState.errors.assessmentNote?.message}
+            />
           </div>
         </Section>
 

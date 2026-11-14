@@ -129,7 +129,8 @@ function TeacherHelp() {
               Tick the topics you taught. Only this week&apos;s topics for that class are shown.
             </li>
             <li>
-              Write what you taught in a sentence or two. Learning outcomes, challenges and remarks
+              Write what you taught in a sentence or two. Under “Assignment or test”, tick any class
+              exercise, assignment or class test you gave. Learning outcomes, challenges and remarks
               are optional.
             </li>
             <li>

@@ -76,6 +76,12 @@ enum CancelReason {
   SCHOOL_CANCELLATION
 }
 
+enum AssessmentKind {
+  CLASS_EXERCISE
+  ASSIGNMENT
+  CLASS_TEST
+}
+
 enum RecordStatus {
   DRAFT
   SUBMITTED
@@ -632,6 +638,9 @@ model TeachingRecord {
   outcomes         String?
   challenges       String?
   remarks          String?
+  /// Class exercise, assignment or class test given in this lesson; empty when none.
+  assessments      AssessmentKind[] @default([])
+  assessmentNote   String?          @map("assessment_note")
   isLate           Boolean      @default(false) @map("is_late")
   submittedAt      DateTime?    @map("submitted_at") @db.Timestamptz(3)
   lastEditedAt     DateTime?    @map("last_edited_at") @db.Timestamptz(3)

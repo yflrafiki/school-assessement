@@ -11,6 +11,7 @@ import { FormField } from '../../components/FormField';
 import { Badge, StatusBadge } from '../../components/StatusBadge';
 import { TopicText } from '../curriculum/TopicText';
 import type { TeachingRecord } from '../../types/api';
+import { AssessmentFields, assessmentText, type AssessmentValues } from './AssessmentFields';
 
 export function useRecord(id: string | null) {
   return useQuery({
@@ -94,12 +95,28 @@ export function RecordView({ record }: { record: TeachingRecord }) {
         {text('Learning outcomes', record.outcomes)}
         {text('Challenges', record.challenges)}
         {text('Remarks', record.remarks)}
+        <div>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Work given to the class
+          </dt>
+          <dd className="mt-1 text-sm">
+            {assessmentText(record.assessments)}
+            {record.assessmentNote && (
+              <span className="text-muted"> · {record.assessmentNote}</span>
+            )}
+          </dd>
+        </div>
       </dl>
     </div>
   );
 }
 
-type EditValues = { taughtSummary: string; outcomes: string; challenges: string; remarks: string };
+type EditValues = AssessmentValues & {
+  taughtSummary: string;
+  outcomes: string;
+  challenges: string;
+  remarks: string;
+};
 
 export function TeacherRecordPage() {
   const { id = '' } = useParams();
@@ -173,11 +190,16 @@ function EditRecordForm({ record, onDone }: { record: TeachingRecord; onDone: ()
       outcomes: record.outcomes ?? '',
       challenges: record.challenges ?? '',
       remarks: record.remarks ?? '',
+      assessments: record.assessments,
+      assessmentNote: record.assessmentNote ?? '',
     },
   });
   const edit = useMutation({
     mutationFn: (v: EditValues) =>
-      api.patch<One<TeachingRecord>>(`/teaching-records/${record.id}`, v),
+      api.patch<One<TeachingRecord>>(`/teaching-records/${record.id}`, {
+        ...v,
+        assessments: Array.isArray(v.assessments) ? v.assessments : [],
+      }),
     onSuccess: (res) => {
       qc.setQueryData(['records', 'detail', record.id], res.data);
       void qc.invalidateQueries({ queryKey: ['records'] });
@@ -190,6 +212,7 @@ function EditRecordForm({ record, onDone }: { record: TeachingRecord; onDone: ()
           'outcomes',
           'challenges',
           'remarks',
+          'assessmentNote',
         ]),
       ),
   });
@@ -221,6 +244,7 @@ function EditRecordForm({ record, onDone }: { record: TeachingRecord; onDone: ()
       <FormField label="Remarks" error={e.remarks?.message}>
         <textarea className="input" rows={2} {...form.register('remarks')} />
       </FormField>
+      <AssessmentFields register={form.register} noteError={e.assessmentNote?.message} />
       {formError && <Alert>{formError}</Alert>}
       <div className="flex justify-end gap-2">
         <button type="button" className="btn-secondary" onClick={onDone} disabled={edit.isPending}>

@@ -1,8 +1,14 @@
 import { z } from 'zod';
-import { LEVELS, RECORD_STATUSES } from './enums.js';
+import { ASSESSMENT_KINDS, LEVELS, RECORD_STATUSES } from './enums.js';
 import { isoDate, optionalText, paginationQuery, uuid } from './common.js';
 
 export const RECORD_EDIT_WINDOW_HOURS = 48;
+
+/** Class exercise, assignment or class test given in the lesson; none is an empty list. */
+const assessments = z
+  .array(z.enum(ASSESSMENT_KINDS))
+  .max(ASSESSMENT_KINDS.length)
+  .transform((v) => [...new Set(v)]);
 
 export const submitRecordBody = z.object({
   lessonId: uuid,
@@ -16,6 +22,8 @@ export const submitRecordBody = z.object({
   outcomes: optionalText(2000),
   challenges: optionalText(2000),
   remarks: optionalText(2000),
+  assessments: assessments.default([]),
+  assessmentNote: optionalText(300),
   status: z.enum(RECORD_STATUSES),
 });
 export type SubmitRecordBody = z.infer<typeof submitRecordBody>;
@@ -31,6 +39,8 @@ export const editRecordBody = z.object({
   outcomes: optionalText(2000),
   challenges: optionalText(2000),
   remarks: optionalText(2000),
+  assessments: assessments.optional(),
+  assessmentNote: optionalText(300),
 });
 
 export const listRecordsQuery = paginationQuery.extend({

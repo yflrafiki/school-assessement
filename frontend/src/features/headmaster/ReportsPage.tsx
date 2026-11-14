@@ -35,6 +35,9 @@ interface ActivityReport {
       submitted: number;
       onTime: number;
       late: number;
+      classExercises: number;
+      assignments: number;
+      classTests: number;
     }[];
   };
   meta: PageMeta;
@@ -217,6 +220,13 @@ export function ReportsPage() {
                           header: 'Late',
                           render: (r) => (r.late ? <span className="text-warn">{r.late}</span> : 0),
                         },
+                        {
+                          key: 'classExercises',
+                          header: 'Class exercises',
+                          render: (r) => r.classExercises,
+                        },
+                        { key: 'assignments', header: 'Assignments', render: (r) => r.assignments },
+                        { key: 'classTests', header: 'Class tests', render: (r) => r.classTests },
                       ]}
                     />
                     <Pagination

@@ -2,6 +2,7 @@ import {
   RECORD_EDIT_WINDOW_HOURS,
   REQUIRED_WEEK_KINDS,
   minutesToTime,
+  type AssessmentKind,
   type ListRecordsQuery,
   type SubmitRecordBody,
   type WeekLockedDetails,
@@ -179,6 +180,8 @@ export async function submitRecord(actor: TeacherActor, input: SubmitRecordBody)
         outcomes: input.outcomes ?? null,
         challenges: input.challenges ?? null,
         remarks: input.remarks ?? null,
+        assessments: input.assessments,
+        assessmentNote: input.assessmentNote ?? null,
         weekNumber: lesson.weekNumber,
         submittedAt,
         isLate: input.status === 'SUBMITTED' ? now.date > date : false,
@@ -289,6 +292,8 @@ const FIELD_LABELS: Record<string, string> = {
   outcomes: 'learning outcomes',
   challenges: 'challenges',
   remarks: 'remarks',
+  assessments: 'assignment or test given',
+  assessmentNote: 'assignment or test note',
 };
 
 /**
@@ -305,6 +310,8 @@ export async function editRecord(
     outcomes?: string | undefined;
     challenges?: string | undefined;
     remarks?: string | undefined;
+    assessments?: AssessmentKind[] | undefined;
+    assessmentNote?: string | undefined;
   },
 ) {
   const notify = await prisma.$transaction(async (tx) => {
@@ -328,8 +335,12 @@ export async function editRecord(
         `Records can only be edited within ${RECORD_EDIT_WINDOW_HOURS} hours of submission`,
       );
     }
+    const same = (a: unknown, b: unknown) =>
+      Array.isArray(a) && Array.isArray(b)
+        ? [...a].sort().join() === [...b].sort().join()
+        : a === b;
     const changed = Object.entries(input)
-      .filter(([k, v]) => v !== undefined && v !== record[k as keyof typeof record])
+      .filter(([k, v]) => v !== undefined && !same(v, record[k as keyof typeof record]))
       .map(([k]) => k);
     if (!changed.length) return null;
     await tx.teachingRecord.update({
@@ -340,6 +351,10 @@ export async function editRecord(
         ...(input.outcomes !== undefined ? { outcomes: input.outcomes } : {}),
         ...(input.challenges !== undefined ? { challenges: input.challenges } : {}),
         ...(input.remarks !== undefined ? { remarks: input.remarks } : {}),
+        ...(input.assessments !== undefined ? { assessments: input.assessments } : {}),
+        ...(input.assessmentNote !== undefined ? { assessmentNote: input.assessmentNote } : {}),
+        // Nothing given any more: the note about it goes too.
+        ...(input.assessments?.length === 0 ? { assessmentNote: null } : {}),
         lastEditedAt: new Date(),
       },
     });
@@ -425,6 +440,8 @@ function toRecordDto(r: RecordRow) {
     outcomes: r.outcomes,
     challenges: r.challenges,
     remarks: r.remarks,
+    assessments: r.assessments,
+    assessmentNote: r.assessmentNote,
     isLate: r.isLate,
     submittedAt: r.submittedAt,
     lastEditedAt: r.lastEditedAt,

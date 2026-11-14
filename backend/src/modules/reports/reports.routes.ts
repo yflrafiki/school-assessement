@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { LEVELS, isoDate, paginationQuery, uuid } from '@school/shared';
+import { LEVELS, isoDate, paginationQuery, uuid, type AssessmentKind } from '@school/shared';
 import { prisma } from '../../lib/db.js';
 import { auth, query, teacherAuth } from '../../lib/http.js';
 import { addDays, fromDbDate, toDbDate, zonedMidnightUtc } from '../../lib/dates.js';
@@ -160,6 +160,18 @@ reportsRouter.get(
       orderBy: [{ user: { fullName: 'asc' } }, { id: 'asc' }],
       ...pageArgs(q.page, q.pageSize),
     });
+    // Lessons in which the class was given work, per teacher on this page.
+    const given = await prisma.teachingRecord.findMany({
+      where: {
+        ...where,
+        teacherProfileId: { in: profiles.map((p) => p.id) },
+        NOT: { assessments: { isEmpty: true } },
+      },
+      select: { teacherProfileId: true, assessments: true },
+    });
+    const countGiven = (teacherProfileId: string, kind: AssessmentKind) =>
+      given.filter((g) => g.teacherProfileId === teacherProfileId && g.assessments.includes(kind))
+        .length;
     res.json({
       data: {
         dateFrom,
@@ -174,6 +186,9 @@ reportsRouter.get(
             submitted: onTime + late,
             onTime,
             late,
+            classExercises: countGiven(p.id, 'CLASS_EXERCISE'),
+            assignments: countGiven(p.id, 'ASSIGNMENT'),
+            classTests: countGiven(p.id, 'CLASS_TEST'),
           };
         }),
       },

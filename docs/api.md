@@ -18,6 +18,8 @@ Request bodies and query strings are defined once in `packages/shared/src` and v
 | Progress and reports | `GET /progress/me`, `/progress/me/weeks/:n`, `/progress/teachers`, `/progress/teachers/:id`, `GET /dashboard/teacher`, `/dashboard/headmaster`, `GET /reports/weekly-progress`, `/reports/teaching-activity`, `GET /audit`                                                                                                                                                                                           |
 | Notifications        | `GET /notifications` (cursor), `GET /notifications/unread-count`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`                                                                                                                                                                                                                                                                                   |
 
+A record may say what work the class was given: `assessments` is a list of `CLASS_EXERCISE`, `ASSIGNMENT` and `CLASS_TEST` (empty when none), with an optional `assessmentNote` (up to 300 characters). Both can be corrected with the record's PATCH; an empty list also clears the note. `/reports/teaching-activity` counts, per teacher, the lessons with each kind (`classExercises`, `assignments`, `classTests`).
+
 ## Error codes
 
 | Code                      | HTTP | Meaning                                                                                                          |

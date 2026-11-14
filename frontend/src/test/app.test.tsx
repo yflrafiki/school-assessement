@@ -163,7 +163,9 @@ describe('record form', () => {
     );
 
     expect(await screen.findByText('Cut off in source')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Cut off in source/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Class test' }));
+    await userEvent.type(screen.getByLabelText(/What was given/), 'Test on place value');
     await userEvent.type(
       screen.getByLabelText(/What was taught/),
       'Place value with base ten blocks.',
@@ -175,7 +177,13 @@ describe('record form', () => {
       screen.getByRole('link', { name: /14 Sept 2026 at 08:00|14 Sep 2026 at 08:00/ }),
     ).toHaveAttribute('href', '/t/lessons/l1/record');
     const submit = calls.find((c) => c.method === 'POST');
-    expect(submit?.body).toMatchObject({ lessonId: 'l2', entryIds: ['e1'], status: 'SUBMITTED' });
+    expect(submit?.body).toMatchObject({
+      lessonId: 'l2',
+      entryIds: ['e1'],
+      status: 'SUBMITTED',
+      assessments: ['CLASS_TEST'],
+      assessmentNote: 'Test on place value',
+    });
   });
 
   it('requires a summary before submitting', async () => {

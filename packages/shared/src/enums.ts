@@ -73,3 +73,12 @@ export const WEEKDAY_LABELS: Record<number, string> = {
   4: 'Thursday',
   5: 'Friday',
 };
+
+/** Work given to the class in a lesson, recorded with the lesson. */
+export const ASSESSMENT_KINDS = ['CLASS_EXERCISE', 'ASSIGNMENT', 'CLASS_TEST'] as const;
+export type AssessmentKind = (typeof ASSESSMENT_KINDS)[number];
+export const ASSESSMENT_LABELS: Record<AssessmentKind, string> = {
+  CLASS_EXERCISE: 'Class exercise',
+  ASSIGNMENT: 'Assignment / homework',
+  CLASS_TEST: 'Class test',
+};

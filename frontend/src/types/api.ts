@@ -1,5 +1,6 @@
 // Shapes of API responses as the web app uses them.
 import type {
+  AssessmentKind,
   ImportFlag,
   LessonState,
   LessonStatus,
@@ -59,6 +60,8 @@ export interface TeachingRecord {
   outcomes: string | null;
   challenges: string | null;
   remarks: string | null;
+  assessments: AssessmentKind[];
+  assessmentNote: string | null;
   isLate: boolean;
   submittedAt: string | null;
   lastEditedAt: string | null;
