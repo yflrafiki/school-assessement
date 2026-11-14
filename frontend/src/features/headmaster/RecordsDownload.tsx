@@ -9,8 +9,8 @@ import type { Term } from '../../types/api';
 
 /**
  * Downloads every teacher's lesson records for a term as one Excel file, to keep or print:
- * a summary per teacher, every record in full, lessons not recorded, and lessons cancelled
- * or moved. Records also stay in the system; they are never deleted.
+ * a summary per teacher, every record in full, every topic taught, lessons not recorded, and
+ * lessons cancelled or moved. Records also stay in the system; they are never deleted.
  */
 export function RecordsDownload({ path, terms }: { path: string; terms?: Term[] | undefined }) {
   const termFieldId = useId();
@@ -32,8 +32,9 @@ export function RecordsDownload({ path, terms }: { path: string; terms?: Term[] 
         <p className="text-muted">
           One Excel file with every teacher&apos;s lesson records for the term: a summary per
           teacher (records, on time, late, not recorded, assignments and tests), every record in
-          full, the lessons not recorded, and lessons cancelled or moved with the reason. Keep it
-          for the school&apos;s files or print it. The records also stay in the system and are never
+          full, every topic taught in each class (strand, content standard and indicator), the
+          lessons not recorded, and lessons cancelled or moved with the reason. Keep it for the
+          school&apos;s files or print it. The records also stay in the system and are never
           deleted.
         </p>
         <div className="flex flex-wrap items-end gap-2">

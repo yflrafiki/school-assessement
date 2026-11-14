@@ -97,6 +97,7 @@ describe('downloading every teacher’s records', () => {
     expect(wb!.worksheets.map((w) => w.name)).toEqual([
       'Summary by teacher',
       'Lesson records',
+      'Topics taught',
       'Not recorded',
       'Cancelled or moved',
     ]);
@@ -121,6 +122,24 @@ describe('downloading every teacher’s records', () => {
         'Late',
       ]),
     );
+
+    // Each topic taught, with the scheme's wording and what the teacher wrote.
+    const entry = topics.body.data.entries[0];
+    expect(rows(wb!, 'Topics taught')).toEqual([
+      [
+        'B7A',
+        'Mathematics',
+        lastMonday,
+        lesson.weekNumber,
+        'Kofi Boateng',
+        entry.strand,
+        entry.subStrand,
+        entry.contentStandard,
+        entry.indicator,
+        'Taught rounding off whole numbers with number lines.',
+        'Class test',
+      ],
+    ]);
 
     const missing = rows(wb!, 'Not recorded');
     expect(missing).toHaveLength(1);

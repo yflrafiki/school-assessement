@@ -71,8 +71,17 @@ export async function buildRecordsWorkbook(schoolId: string, filter: RecordsExpo
         include: {
           topics: {
             include: {
-              entry: { select: { strand: true, subStrand: true, indicator: true } },
+              entry: {
+                select: {
+                  weekNumber: true,
+                  strand: true,
+                  subStrand: true,
+                  contentStandard: true,
+                  indicator: true,
+                },
+              },
             },
+            orderBy: { entry: { sortOrder: 'asc' } },
           },
         },
       },
@@ -181,9 +190,7 @@ export async function buildRecordsWorkbook(schoolId: string, filter: RecordsExpo
       l.assignment.teacherProfile.staffId,
       l.assignment.schoolClass.name,
       l.assignment.subject.name,
-      r.topics
-        .map((t) => `${t.entry.strand} › ${t.entry.subStrand}: ${t.entry.indicator}`)
-        .join('\n'),
+      r.topics.map((t) => topicLine(t.entry)).join('\n\n'),
       r.taughtSummary,
       r.topicNote ?? '',
       r.outcomes ?? '',
@@ -199,7 +206,67 @@ export async function buildRecordsWorkbook(schoolId: string, filter: RecordsExpo
   records.getColumn(9).alignment = { wrapText: true, vertical: 'top' };
   records.getColumn(10).alignment = { wrapText: true, vertical: 'top' };
 
-  // 3. Lessons that ended without a submitted record.
+  // 3. What was taught, topic by topic: what each class has covered, by whom and when.
+  const taught = sheet(wb, 'Topics taught', title, period, [
+    ['Class', 10],
+    ['Subject', 22],
+    ['Lesson date', 12],
+    ['Week', 7],
+    ['Teacher', 24],
+    ['Strand', 26],
+    ['Sub-strand', 26],
+    ['Content standard', 45],
+    ['Indicator', 55],
+    ['What was taught', 50],
+    ['Work given', 24],
+  ]);
+  const byClassAndSubject = [...submitted].sort(
+    (a, b) =>
+      a.assignment.schoolClass.name.localeCompare(b.assignment.schoolClass.name) ||
+      a.assignment.subject.name.localeCompare(b.assignment.subject.name) ||
+      a.date.getTime() - b.date.getTime() ||
+      a.startMinute - b.startMinute,
+  );
+  for (const l of byClassAndSubject) {
+    const r = l.record!;
+    const lessonCells = [
+      l.assignment.schoolClass.name,
+      l.assignment.subject.name,
+      fromDbDate(l.date),
+      r.weekNumber,
+      l.assignment.teacherProfile.user.fullName,
+    ];
+    const given = r.assessments.length
+      ? r.assessments.map((k) => ASSESSMENT_LABELS[k]).join(', ')
+      : 'None';
+    // A revision lesson may name what was revised in the topic note instead of ticking topics.
+    if (!r.topics.length) {
+      taught.addRow([
+        ...lessonCells,
+        '',
+        '',
+        '',
+        r.topicNote ? `(Topic note) ${r.topicNote}` : '(No topic ticked)',
+        r.taughtSummary,
+        given,
+      ]);
+    }
+    for (const t of r.topics) {
+      taught.addRow([
+        ...lessonCells,
+        t.entry.strand,
+        t.entry.subStrand,
+        t.entry.contentStandard,
+        t.entry.indicator,
+        r.taughtSummary,
+        given,
+      ]);
+    }
+  }
+  for (const col of [8, 9, 10])
+    taught.getColumn(col).alignment = { wrapText: true, vertical: 'top' };
+
+  // 4. Lessons that ended without a submitted record.
   const notRecorded = sheet(wb, 'Not recorded', title, period, [
     ['Lesson date', 12],
     ['Day', 11],
@@ -225,7 +292,7 @@ export async function buildRecordsWorkbook(schoolId: string, filter: RecordsExpo
     ]);
   }
 
-  // 4. Lessons cancelled, waived or moved, with the reason.
+  // 5. Lessons cancelled, waived or moved, with the reason.
   const changes = sheet(wb, 'Cancelled or moved', title, period, [
     ['Lesson date', 12],
     ['Day', 11],
@@ -317,4 +384,16 @@ export async function sendRecordsExport(req: Request, res: Response, schoolId: s
   );
   res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
   res.send(file.buffer);
+}
+
+/** One topic as the scheme words it: strand › sub-strand, the content standard, the indicator. */
+function topicLine(e: {
+  strand: string;
+  subStrand: string;
+  contentStandard: string;
+  indicator: string;
+}) {
+  return [`${e.strand} › ${e.subStrand}`, e.contentStandard, e.indicator]
+    .filter(Boolean)
+    .join('\n');
 }

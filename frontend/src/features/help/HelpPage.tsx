@@ -297,7 +297,8 @@ function HeadmasterHelp() {
             </Link>{' '}
             and press <strong>Download Excel file</strong>. You get one file for the term with a
             summary per teacher, every record in full (topics, what was taught, assignments and
-            tests), the lessons not recorded, and the lessons cancelled or moved. Download one at
+            tests), every topic taught in each class with its strand, content standard and
+            indicator, the lessons not recorded, and the lessons cancelled or moved. Download one at
             the end of each term and keep it safe.
           </p>
         </Topic>
