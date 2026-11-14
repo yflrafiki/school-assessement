@@ -36,6 +36,7 @@ const ACTIONS: Record<string, string> = {
   'record.draft_created': 'saved a lesson record draft',
   'record.edited': 'edited a lesson record',
   'record.submitted': 'submitted a lesson record',
+  'records.exported': "downloaded the teachers' records (Excel)",
   'school.renamed': 'renamed the school',
   'subject.language_created': 'added a Ghanaian language',
   'subject.updated': 'changed a subject',

@@ -129,6 +129,51 @@ export interface Page<T> {
   meta: PageMeta;
 }
 
+/**
+ * Downloads a file the server builds (for example the records workbook) and saves it on this
+ * device under the server's file name. The session token goes in the header, as for any call.
+ */
+export async function downloadFile(path: string, query?: Query): Promise<string> {
+  const headers: Record<string, string> = {};
+  const token = getSessionToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}${toQueryString(query)}`, { headers, credentials: 'omit' });
+  } catch {
+    throw new ApiError(
+      0,
+      'NETWORK_ERROR',
+      'Cannot reach the server. Check your connection and try again.',
+    );
+  }
+  if (!res.ok) {
+    const err = ((await res.json().catch(() => null)) as ApiErrorBody | null)?.error;
+    if (res.status === 401 && token) {
+      setSessionToken(null);
+      onUnauthenticated?.();
+    }
+    throw new ApiError(
+      res.status,
+      err?.code ?? 'INTERNAL_ERROR',
+      err?.message ?? 'The download failed. Please try again.',
+      err?.details,
+      err?.requestId,
+    );
+  }
+  const name =
+    /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'download';
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return name;
+}
+
 export const api = {
   get: <T>(path: string, query?: Query) => request<T>('GET', path, undefined, query),
   post: <T>(path: string, body: unknown = {}) => request<T>('POST', path, body),

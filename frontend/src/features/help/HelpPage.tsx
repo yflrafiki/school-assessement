@@ -288,6 +288,19 @@ function HeadmasterHelp() {
             screen as soon as a teacher submits or edits one.
           </p>
         </Topic>
+        <Topic title="Keeping a copy of all teachers' records">
+          <p>
+            Every record a teacher submits stays in the system; records are never deleted. To keep a
+            copy for the school&apos;s files, or to print one, open{' '}
+            <Link to="/h/reports" className="link">
+              Reports
+            </Link>{' '}
+            and press <strong>Download Excel file</strong>. You get one file for the term with a
+            summary per teacher, every record in full (topics, what was taught, assignments and
+            tests), the lessons not recorded, and the lessons cancelled or moved. Download one at
+            the end of each term and keep it safe.
+          </p>
+        </Topic>
         <Topic title="A lesson did not take place">
           <p>
             In{' '}

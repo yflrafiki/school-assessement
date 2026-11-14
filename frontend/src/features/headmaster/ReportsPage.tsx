@@ -16,6 +16,7 @@ import {
   useSubjects,
   useTerms,
 } from '../reference';
+import { RecordsDownload } from './RecordsDownload';
 
 interface WeeklyReport {
   termId: string | null;
@@ -86,6 +87,7 @@ export function ReportsPage() {
         description="Completion is measured per class subject and week from lessons. Activity counts submitted records."
       />
       <div className="space-y-5">
+        <RecordsDownload path="/reports/records-export" terms={terms.data} />
         <Section title="Weekly completion rate">
           <FilterBar>
             <FilterSelect

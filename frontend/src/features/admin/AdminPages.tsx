@@ -11,6 +11,7 @@ import { Badge, StatusBadge } from '../../components/StatusBadge';
 import { Alert, EmptyState, QueryView } from '../../components/States';
 import { useCurrentUser } from '../auth/useMe';
 import { ACTION_GROUPS, describeAction } from './activityText';
+import { RecordsDownload } from '../headmaster/RecordsDownload';
 
 // ---------- Shared shapes ----------
 
@@ -187,6 +188,7 @@ export function AdminOverview() {
               </Section>
             )}
             {schoolId && <SchoolBody id={schoolId} />}
+            {schoolId && <RecordsDownload path="/admin/records-export" />}
           </div>
         )}
       </QueryView>

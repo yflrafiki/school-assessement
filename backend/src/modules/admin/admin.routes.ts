@@ -4,6 +4,9 @@ import { ROLES, USER_STATUSES, paginationQuery, uuid } from '@school/shared';
 import { idParam, query } from '../../lib/http.js';
 import { requirePermission } from '../../middleware/requireRole.js';
 import * as service from './admin.service.js';
+import { prisma } from '../../lib/db.js';
+import { notFound } from '../../lib/errors.js';
+import { sendRecordsExport } from '../reports/recordsExport.js';
 
 /** The system admin's read-only view of every school. Only GET routes: nothing is changed here. */
 export const adminRouter = Router();
@@ -43,4 +46,14 @@ adminRouter.get('/admin/activity', async (req, res) => {
     }),
   );
   res.json(await service.listActivity(q));
+});
+
+/** The same records download as the headmaster's, for the school (this system serves one). */
+adminRouter.get('/admin/records-export', async (req, res) => {
+  const school = await prisma.school.findFirst({
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+  if (!school) throw notFound('School');
+  await sendRecordsExport(req, res, school.id);
 });

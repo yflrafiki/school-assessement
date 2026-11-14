@@ -6,6 +6,7 @@ import { auth, query, teacherAuth } from '../../lib/http.js';
 import { addDays, fromDbDate, toDbDate, zonedMidnightUtc } from '../../lib/dates.js';
 import { pageArgs, pageMeta } from '../../lib/pagination.js';
 import { requirePermission, requireRole } from '../../middleware/requireRole.js';
+import { sendRecordsExport } from './recordsExport.js';
 import { dailyBoard, listLessons, schoolNow } from '../lessons/lessons.service.js';
 import {
   schoolTeacherProgress,
@@ -194,6 +195,15 @@ reportsRouter.get(
       },
       meta: pageMeta(q.page, q.pageSize, ids.length),
     });
+  },
+);
+
+/** Every teacher's records for a term as an Excel workbook, to keep or print. */
+reportsRouter.get(
+  '/reports/records-export',
+  requirePermission('reports.view'),
+  async (req, res) => {
+    await sendRecordsExport(req, res, auth(req).schoolId);
   },
 );
 

@@ -20,6 +20,8 @@ Request bodies and query strings are defined once in `packages/shared/src` and v
 
 A record may say what work the class was given: `assessments` is a list of `CLASS_EXERCISE`, `ASSIGNMENT` and `CLASS_TEST` (empty when none), with an optional `assessmentNote` (up to 300 characters). Both can be corrected with the record's PATCH; an empty list also clears the note. `/reports/teaching-activity` counts, per teacher, the lessons with each kind (`classExercises`, `assignments`, `classTests`).
 
+`GET /reports/records-export` (headmaster) and `GET /admin/records-export` (system admin) download every teacher's records for a term as an Excel workbook (`termId`, optional `dateFrom` and `dateTo`; the current term by default): a summary per teacher, every submitted record, lessons not recorded, and lessons cancelled, waived or moved. Each download is audited as `records.exported`.
+
 ## Error codes
 
 | Code                      | HTTP | Meaning                                                                                                          |
